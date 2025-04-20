@@ -150,9 +150,18 @@ class FolderAnalyzer:
                                files: List[Path], 
                                file_types_count: Counter,
                                target_file_types: List[str] = None,
-                               has_child_with_archive: bool = False) -> Tuple[str, Dict[str, int]]:
+                               has_child_with_archive: bool = False,
+                               min_count: int = 2) -> Tuple[str, Dict[str, int]]:
         """
         根据文件类型分布确定压缩模式，同时返回符合条件的文件扩展名统计
+        
+        Args:
+            folder_path: 文件夹路径
+            files: 文件列表
+            file_types_count: 文件类型计数
+            target_file_types: 目标文件类型列表
+            has_child_with_archive: 子文件夹中是否有压缩包
+            min_count: 最小匹配文件数量，低于此数值则不进行压缩
         
         Returns:
             Tuple[str, Dict[str, int]]: (压缩模式, 文件扩展名统计)
@@ -183,7 +192,7 @@ class FolderAnalyzer:
             matching_files = [f for f in files if file_type_manager.is_file_in_types(f, target_file_types)]
             
             # 如果有匹配的文件，统计它们的扩展名
-            if matching_files:
+            if matching_files and len(matching_files) >= min_count:
                 for file in matching_files:
                     ext = file.suffix.lower()
                     if ext:  # 只记录非空扩展名
@@ -192,16 +201,19 @@ class FolderAnalyzer:
                 # 返回selective模式和扩展名统计
                 return self.COMPRESS_MODE_SELECTIVE, dict(file_ext_count)
                 
-            # 没有匹配的文件，跳过处理
+            # 没有匹配的文件或匹配文件数量不满足最小要求，跳过处理
             return self.COMPRESS_MODE_SKIP, dict(file_ext_count)
         
-        # 如果没有指定目标类型，整体压缩，记录所有文件扩展名
+        # 如果没有指定目标类型，但文件数量满足最小要求，整体压缩，记录所有文件扩展名
         if not target_file_types:
-            for file in files:
-                ext = file.suffix.lower()
-                if ext:  # 只记录非空扩展名
-                    file_ext_count[ext] += 1
-            return self.COMPRESS_MODE_ENTIRE, dict(file_ext_count)
+            if len(files) >= min_count:
+                for file in files:
+                    ext = file.suffix.lower()
+                    if ext:  # 只记录非空扩展名
+                        file_ext_count[ext] += 1
+                return self.COMPRESS_MODE_ENTIRE, dict(file_ext_count)
+            else:
+                return self.COMPRESS_MODE_SKIP, dict(file_ext_count)
             
         # 开始处理基于目标类型的判断
         file_type_manager = FileTypeManager()
@@ -219,6 +231,10 @@ class FolderAnalyzer:
         
         matching_count = len(matching_files)
         
+        # 如果匹配文件数量不满足最小要求，跳过处理
+        if matching_count < min_count:
+            return self.COMPRESS_MODE_SKIP, dict(file_ext_count)
+            
         # 如果所有文件都匹配目标类型，整体压缩
         if matching_count == total_files and matching_count > 0:
             return self.COMPRESS_MODE_ENTIRE, dict(file_ext_count)

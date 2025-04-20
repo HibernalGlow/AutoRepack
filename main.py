@@ -18,7 +18,6 @@ from rich.panel import Panel
 from rich.logging import RichHandler
 # 将原来的textual_preset导入修改为rich_preset
 from nodes.tui.preset.textual_preset import create_config_app
-from scripts.pics.pics_convert import USE_RICH
 
 console = Console()
 current_dir = os.path.dirname(os.path.abspath(__file__))
