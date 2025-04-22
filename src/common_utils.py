@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # 文件类型和扩展名映射
 DEFAULT_FILE_TYPES = {
-    "text": {".txt", ".md", ".log", ".ini", ".cfg", ".conf", ".json", ".xml", ".yml", ".yaml", ".csv"},
+    "text": {".txt", ".md", ".log", ".ini", ".cfg", ".conf", ".json", ".xml", ".yml", ".yaml", ".csv", ".convert"},
     "image": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg", ".ico", ".raw", ".jxl", ".avif", ".psd"},
     "video": {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".nov"},
     "audio": {".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a", ".opus"},

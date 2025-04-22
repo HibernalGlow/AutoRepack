@@ -57,6 +57,7 @@ class CompressionTracker:
         self.progress = progress
         self.task_id = None
         self.file_task_id = None
+        self.total_task_id = None  # 新增：总体进度任务ID
         self.total_files = 0
         self.processed_files = 0
         self.current_file = ""
@@ -79,6 +80,13 @@ class CompressionTracker:
                     completed=self.processed_files,
                     description=f"[cyan]总体进度: {self.processed_files}/{self.total_files} 文件[/]"
                 )
+                # 更新固定在底部的总体进度
+                if self.total_task_id is not None:
+                    self.progress.update(
+                        self.total_task_id, 
+                        completed=self.processed_files,
+                        description=f"[bold cyan]总体压缩进度: {self.processed_files}/{self.total_files} 文件[/]"
+                    )
                 # 重置当前文件进度
                 self.progress.update(
                     self.file_task_id,
@@ -226,9 +234,21 @@ class ZipCompressor:
         # 显示执行的命令
         logging.info(f"[#process]🔄 执行压缩命令: {cmd}")
         
-                # 使用进度条创建压缩跟踪器
+        # 使用进度条创建压缩跟踪器
         with Progress(*progress_columns, console=console) as progress:
             tracker = CompressionTracker(progress)
+            
+            # 创建总体进度任务
+            tracker.task_id = progress.add_task(f"[cyan]总体进度: 0/{total_files} 文件[/]", total=total_files)
+            
+            # 创建当前文件进度任务
+            tracker.file_task_id = progress.add_task("[green]当前文件: 等待开始...[/]", total=100)
+            
+            # 创建固定在底部的总体进度任务
+            tracker.total_task_id = progress.add_task(f"[bold cyan]总体压缩进度: 0/{total_files} 文件[/]", total=total_files)
+            
+            # 设置总文件数
+            tracker.total_files = total_files
             
             # 使用Popen而不是run来实时获取输出
             process = subprocess.Popen(
