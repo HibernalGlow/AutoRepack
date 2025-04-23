@@ -502,9 +502,10 @@ class FolderAnalyzer:
         
         return folder_info
     
-    def generate_config_json(self, root_folder: Path, 
+    def generate_config_json(self, root_folder: Path,
                           output_path: Optional[Path] = None,
-                          target_file_types: List[str] = None) -> str:
+                          target_file_types: List[str] = None,
+                          root_info: Optional[FolderInfo] = None) -> str: # 添加 root_info 参数
         """
         生成树状结构的文件夹配置JSON
         
@@ -512,22 +513,28 @@ class FolderAnalyzer:
             root_folder: 根文件夹路径
             output_path: 输出JSON文件的路径，默认为与文件夹同名的json文件
             target_file_types: 目标文件类型列表，用于记录在配置中
-            
+            root_info: 可选的预先分析好的根文件夹信息
+        
         Returns:
             str: 生成的JSON配置文件路径
         """
-        # 分析文件夹树结构
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]正在分析文件夹结构..."),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console
-        ) as progress:
-            task = progress.add_task("[green]分析中...", total=None)
-            root_info = self.analyze_folder_structure(root_folder, target_file_types=target_file_types)
-            progress.update(task, completed=100)
-        
+        # 如果没有提供 root_info，则分析文件夹树结构
+        if root_info is None:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]正在分析文件夹结构..."),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task("[green]分析中...", total=None)
+                root_info = self.analyze_folder_structure(root_folder, target_file_types=target_file_types)
+                progress.update(task, completed=100)
+
+        # 检查 root_info 是否有效
+        if root_info is None:
+             raise ValueError("无法获取文件夹信息，分析失败。")
+
         # 准备配置数据 (树形结构)
         config = {
             "folder_tree": root_info.to_tree_dict(),
@@ -793,18 +800,27 @@ def analyze_folder(folder_path: Union[str, Path], target_file_types: List[str] =
     # 创建文件夹分析器
     analyzer = FolderAnalyzer()
     
-    # 分析文件夹并生成配置
+    # 分析文件夹结构 (只执行一次)
     root_info = analyzer.analyze_folder_structure(folder_path, target_file_types=target_file_types)
-    
+
+    # 如果 root_info 为 None (例如，路径是黑名单)，则提前退出或抛出错误
+    if root_info is None:
+        console.print(f"[bold yellow]警告:[/bold yellow] 文件夹分析未返回有效信息 (可能在黑名单中): {folder_path}")
+        # 根据需要决定是返回 None, 空字符串, 还是抛出异常
+        # 这里选择抛出异常，因为后续需要 root_info
+        raise ValueError(f"无法分析文件夹: {folder_path}")
+
+
     # 如果需要在控制台显示结果
     if display:
         display_folder_structure(root_info)
-    
-    # 生成配置文件
+
+    # 生成配置文件，传入已分析的 root_info
     config_path = analyzer.generate_config_json(
-        folder_path, 
+        folder_path,
         output_path,
-        target_file_types
+        target_file_types,
+        root_info=root_info  # 传递 root_info
     )
     
     console.print(f"[bold green]分析完成！[/bold green] 配置文件已保存到: {config_path}")
