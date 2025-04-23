@@ -823,7 +823,7 @@ def analyze_folder(folder_path: Union[str, Path], target_file_types: List[str] =
         root_info=root_info  # 传递 root_info
     )
     
-    console.print(f"[bold green]分析完成！[/bold green] 配置文件已保存到: {config_path}")
+    console.print(f"[bold green]分析完成！ 配置文件已保存到: {config_path}[/bold green]")
     logging.info(f"分析完成，配置文件已保存到: {config_path}")
     return config_path
 

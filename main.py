@@ -134,8 +134,6 @@ def analyze_folder(folder_path: Union[str, Path], target_file_types: List[str] =
         # 调用分析器
         config_path = analyzer(folder_path, target_file_types=target_file_types, display=True)
         
-        # 显示分析完成信息
-        console.print(f"[green]分析完成！配置文件已保存到: {config_path}[/green]")
         
         return config_path
         
