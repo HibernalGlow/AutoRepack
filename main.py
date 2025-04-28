@@ -17,8 +17,9 @@ from rich.prompt import Confirm
 from rich.panel import Panel
 from rich.logging import RichHandler
 # 将原来的textual_preset导入修改为rich_preset
-from src.common.PresetUI.textual_preset import create_config_app
-
+# from src.common.PresetUI.textual_preset import create_config_app
+# from textual_preset import create_config_app
+from rich_preset import create_config_app
 console = Console()
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
