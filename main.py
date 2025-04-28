@@ -10,7 +10,7 @@ import argparse
 import logging
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
-
+import logging
 # 导入Rich库用于美化输出
 from rich.console import Console
 from rich.prompt import Confirm
@@ -35,14 +35,15 @@ SEVEN_ZIP_PATH = "C:\\Program Files\\7-Zip\\7z.exe"  # 默认7z路径
 COMPRESSION_LEVEL = 5  # 1-9，9为最高压缩率
 USE_RICH = True
 
-from nodes.record.logger_config import setup_logger
+# from nodes.record.logger_config import setup_logger
 
-# 初始化控制台
-config = {
-    'script_name': 'auto_repack',
-    'console_enabled': False
-}
-logger, config_info = setup_logger(config)
+# # 初始化控制台
+# config = {
+#     'script_name': 'auto_repack',
+#     'console_enabled': False
+# }
+# logger, config_info = setup_logger(config)
+logger = logging.getLogger('auto_repack')
 
 
 

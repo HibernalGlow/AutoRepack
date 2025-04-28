@@ -5,11 +5,9 @@
 """
 
 import os
-import logging
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Any, Optional, Union
 
-logger = logging.getLogger(__name__)
 
 # 文件类型和扩展名映射
 DEFAULT_FILE_TYPES = {
@@ -73,14 +71,11 @@ def get_folder_size(folder_path: Path) -> int:
         int: 文件夹总大小（字节）
     """
     total_size = 0
-    try:
-        for dirpath, _, filenames in os.walk(folder_path):
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
-                if os.path.isfile(file_path) and not os.path.islink(file_path):
-                    total_size += os.path.getsize(file_path)
-    except Exception as e:
-        logger.error(f"计算文件夹大小时出错: {folder_path}, {str(e)}")
+    for dirpath, _, filenames in os.walk(folder_path):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if os.path.isfile(file_path) and not os.path.islink(file_path):
+                total_size += os.path.getsize(file_path)
     return total_size
 
 def compare_zip_contents(source_folder: Path, zip_file: Path) -> bool:
@@ -97,22 +92,6 @@ def compare_zip_contents(source_folder: Path, zip_file: Path) -> bool:
     # 简单确认压缩包存在且大小不为0
     return zip_file.exists() and zip_file.stat().st_size > 0
 
-def create_directory(path: Path) -> bool:
-    """
-    创建目录，如果目录已存在则不做任何操作
-    
-    Args:
-        path: 要创建的目录路径
-    
-    Returns:
-        bool: 操作是否成功
-    """
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        return True
-    except Exception as e:
-        logger.error(f"创建目录失败: {path}, {str(e)}")
-        return False
 
 def ensure_file_extension(file_path: Path, extension: str) -> Path:
     """
