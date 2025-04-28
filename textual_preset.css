@@ -1,0 +1,273 @@
+Screen {
+    align: center middle;
+}
+
+#main-container {
+    width: 80%;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 0;  /* 完全移除上下padding */
+    min-width: 50;
+    max-width: 120;
+}
+
+#top-container {
+    layout: horizontal;
+    height: auto;
+    margin-bottom: 0;  
+    padding: 0;  /* 新增：移除内边距 */
+}
+
+#presets-container {
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+#buttons-container {
+    width: 100%;
+    layout: horizontal;
+    align: center middle;
+    height: auto;
+    padding: 0;
+    margin: 0 0 1 0;
+}
+
+#buttons-container Button {
+    width: auto;
+    min-width: 10;
+    margin: 0 1;
+    height: 3;
+    content-align: center middle;
+    padding: 0;
+    background: $primary;
+    color: $text;
+    border: none;
+}
+
+#buttons-container #quit-btn {
+    margin-bottom: 0;
+    background: $error;
+}
+
+#buttons-container #copy-btn {
+    background: $primary-darken-1;
+}
+
+#buttons-container Button:hover {
+    background: $primary-lighten-2;
+}
+
+#buttons-container #quit-btn:hover {
+    background: $error-lighten-2;
+}
+
+.config-group {
+    background: $surface;
+    height: auto;
+    margin: 0;  /* 减少margin */
+    padding: 0;
+}
+
+.group-title {
+    background: $primary;
+    color: $text;
+    text-style: bold;
+    text-align: center;
+    width: 100%;
+    padding: 0 1;
+    margin: 0;  /* 确保没有margin */
+}
+
+SelectionList {
+    background: transparent;
+    border: none;
+    height: auto;
+    max-height: 10;
+    scrollbar-gutter: stable;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+SelectionList:focus {
+    border: none;
+    background: transparent;
+}
+
+.option-list--option {
+    background: $panel;
+    color: $text;
+    padding: 0 1;
+    height: 1;
+    margin-bottom: 0;  /* 减少选项之间的间距 */
+    border: none;
+    box-sizing: border-box;
+}
+
+.option-list--option:hover {
+    background: $primary;
+}
+
+.option-list--option.-selected {
+    background: $accent;
+    color: $text;
+    border: none;
+}
+
+.params-container {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    grid-gutter: 0;  
+    background: transparent;
+    padding: 0;
+    height: auto;
+    margin-top: 0;  
+}
+
+.param-item {
+    layout: horizontal;
+    height: 3;
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin: 0;  /* 确保没有margin */
+}
+
+.param-item Label {
+    width: 40%;  # 调整标签宽度
+    content-align: right middle;
+    padding: 0 1;
+    background: $primary-darken-1;
+    color: $text;
+}
+
+.param-item Input {
+    width: 60%;  # 调整输入框宽度
+    background: $panel;
+    border: none;
+    padding: 0 1;
+    height: 100%;
+    color: $text;
+}
+
+.param-item Select {
+    width: 60%;  # 调整选择框宽度
+    background: $panel;
+    border: none;
+    padding: 0 1;
+    /* height: auto; */
+    color: $text;
+}
+
+
+
+#command-preview {
+    height: auto;
+    margin: 0;  /* 完全移除上下margin */
+    padding: 0;
+    background: $surface-darken-2;
+    border: solid $primary;
+}
+
+#command-preview-header {
+    layout: horizontal;
+    height: auto;
+    padding: 0;
+}
+
+#command-preview-header Label {
+    padding: 0 1;
+    color: $text;
+    text-style: bold;
+    width: 1fr;
+}
+
+#command-preview-header Button {
+    width: auto;
+    min-width: 8;
+    margin: 0 1;
+    height: 1;
+    background: $primary-darken-1;
+}
+
+#command-preview Label {
+    padding: 0 1;
+    color: $text;
+    text-style: bold;
+}
+
+#command-preview #command {
+    background: $surface-darken-1;
+    color: $accent;
+    padding: 0 1;
+    border-top: solid $primary;
+    overflow-x: scroll;
+    width: 100%;
+    height: auto;
+    min-height: 1;
+}
+
+#preset-list {
+    height: auto;
+    margin: 0;  
+    padding: 0;  /* 新增：移除内边距 */
+    background: transparent;
+}
+
+#preset-list RadioSet {
+    background: transparent;
+    height: auto;
+    padding: 0;
+    margin: 0;  /* 确保没有margin */
+}
+
+#preset-control-buttons {
+    layout: horizontal;
+    height: 3;
+    margin-top: 1;
+}
+
+#preset-control-buttons Button {
+    margin: 0 1;
+    min-width: 16;
+}
+
+#dialog-grid {
+    grid-size: 2;
+    grid-gutter: 1 2;
+    grid-rows: 4;
+    padding: 1;
+    width: 60;
+    height: 16;
+    border: thick $background 80%;
+    background: $surface;
+}
+
+#dialog-grid Label {
+    text-align: right;
+    padding: 1;
+}
+
+#dialog-grid Input {
+    width: 100%;
+}
+
+#dialog-grid Button {
+    margin: 1 1;
+    width: 100%;
+}
+
+#preset-radio {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+#preset-radio > .radio-set-option {
+    width: 100%;
+    margin: 0;
+}
