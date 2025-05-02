@@ -123,7 +123,7 @@ class CompressionResult:
 class ZipCompressor:
     """压缩处理类，封装核心压缩操作"""
     
-    def __init__(self, compression_level: int = 16):
+    def __init__(self, compression_level: int = 5):
         """
         初始化压缩处理器
         
