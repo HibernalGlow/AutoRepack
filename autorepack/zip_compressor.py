@@ -24,10 +24,10 @@ from rich.text import Text
 from rich.progress import Progress, TextColumn, BarColumn, TaskID, SpinnerColumn
 from rich.progress import TimeElapsedColumn, TimeRemainingColumn, FileSizeColumn, ProgressColumn
 from rich.live import Live
-from src.folder_analyzer import FolderInfo
+from autorepack.folder_analyzer import FolderInfo
 
 # 导入folder_analyzer模块中的显示函数
-from src.folder_analyzer import display_folder_structure
+from autorepack.folder_analyzer import display_folder_structure
 
 # 设置Rich日志记录器
 console = Console()
@@ -493,7 +493,7 @@ class ZipCompressor:
             logging.info("📂 文件夹分析结果:")
             
             # 导入folder_analyzer中的FolderInfo来构建树状结构
-            from src.folder_analyzer import FolderInfo
+            from autorepack.folder_analyzer import FolderInfo
             
             # 从配置转换为FolderInfo结构
             def config_to_folder_info(config_data):
