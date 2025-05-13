@@ -10,7 +10,6 @@ import argparse
 import logging
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
-import logging
 # 导入Rich库用于美化输出
 from rich.console import Console
 from rich.prompt import Confirm
@@ -30,6 +29,14 @@ try:
     from autorepack.zip_compressor import ZipCompressor as compressor
 except ImportError as e:
     console.print(f"[red]zip_compressor: {str(e)}[/red]")
+
+# 导入剪贴板模块（如果可用）
+try:
+    import pyperclip
+except ImportError:
+    pyperclip = None
+    console.print("[yellow]提示: 未安装pyperclip库，剪贴板功能将不可用[/yellow]")
+    console.print("[yellow]请使用: pip install pyperclip[/yellow]")
 
 # 配置常量
 SEVEN_ZIP_PATH = "C:\\Program Files\\7-Zip\\7z.exe"  # 默认7z路径
@@ -140,22 +147,45 @@ def create_arg_parser():
     parser.add_argument('--tui', action='store_true',
                        help='启用TUI图形配置界面')
     
+    # 单层打包选项
+    parser.add_argument('--single', '-s', action='store_true',
+                       help='启用单层打包模式，将目录下每个子文件夹打包为单独的压缩包')
+    
+    # 画集模式
+    parser.add_argument('--gallery', '-g', action='store_true',
+                       help='画集模式：自动查找并处理输入目录下所有名为".画集"的文件夹')
+    
     return parser
 
 def get_path_from_clipboard():
-    """从剪贴板获取路径"""
+    """从剪贴板获取路径，支持多行路径，返回第一个有效路径"""
     try:
-        import pyperclip
-        clipboard_content = pyperclip.paste()
-        
-        if clipboard_content and os.path.exists(clipboard_content):
-            return clipboard_content
-        else:
-            console.print("[yellow]剪贴板内容不是有效路径[/yellow]")
+        if pyperclip is None:
+            console.print("[red]未安装pyperclip模块，请安装: pip install pyperclip[/red]")
             return ""
-    except ImportError:
-        console.print("[red]无法导入pyperclip模块，请安装: pip install pyperclip[/red]")
-        return ""
+            
+        clipboard_content = pyperclip.paste().strip()
+        
+        if not clipboard_content:
+            console.print("[yellow]剪贴板内容为空[/yellow]")
+            return ""
+            
+        # 处理多行路径，取第一个有效路径
+        lines = clipboard_content.splitlines()
+        valid_paths = []
+        
+        for line in lines:
+            path = line.strip().strip('"').strip("'")
+            if path and os.path.exists(path):
+                valid_paths.append(path)
+        
+        if valid_paths:
+            if len(valid_paths) > 1:
+                console.print(f"[yellow]剪贴板包含多个路径，使用第一个有效路径: {valid_paths[0]}[/yellow]")
+            return valid_paths[0]
+        else:
+            console.print("[yellow]剪贴板内容不包含有效路径[/yellow]")
+            return ""
     except Exception as e:
         console.print(f"[red]从剪贴板获取路径时出错: {str(e)}[/red]")
         return ""
@@ -245,6 +275,8 @@ def run_with_params(params: Dict[str, Any]) -> int:
         folder_path = params['inputs'].get('--path', '')
         types = params['inputs'].get('--types', '')
         use_clipboard = params['options'].get('--clipboard', False)
+        single_mode = params['options'].get('--single', False)
+        gallery_mode = params['options'].get('--gallery', False)
         
         # 获取处理路径
         if use_clipboard:
@@ -256,7 +288,26 @@ def run_with_params(params: Dict[str, Any]) -> int:
             console.print("使用 --path 指定路径或使用 --clipboard 从剪贴板读取路径")
             return 1
         
-        # 获取文件类型
+        # 如果是单层打包模式或画集模式，使用SinglePacker
+        if single_mode or gallery_mode:
+            from autorepack.single_packer import SinglePacker
+            
+            packer = SinglePacker()
+            
+            if gallery_mode:
+                logger.info(f"画集模式: 扫描并处理目录 '{folder_path}' 下的所有.画集文件夹")
+                console.print(f"[blue]画集模式: 扫描并处理目录 '{folder_path}' 下的所有.画集文件夹[/blue]")
+                packer.process_gallery_folders(folder_path, delete_after=delete_after)
+            else:
+                logger.info(f"单层打包模式: 处理目录 '{folder_path}' 下的子文件夹")
+                console.print(f"[blue]单层打包模式: 处理目录 '{folder_path}' 下的子文件夹[/blue]")
+                packer.pack_directory(folder_path, delete_after=delete_after)
+            
+            logger.info("处理完成")
+            console.print("[green]✓ 处理完成！[/green]")
+            return 0
+            
+        # 标准模式 - 获取文件类型
         target_file_types = types.split(',') if types else ['text', 'image', 'document']
         logger.info(f"目标文件类型: {target_file_types}")
         
@@ -308,6 +359,14 @@ def launch_tui_mode(parser: argparse.ArgumentParser) -> int:
                     "path": "",
                     "types": "image"
                 }
+            },
+            "画集处理": {
+                "description": "扫描并处理目录下所有.画集文件夹",
+                "checkbox_options": ["delete_after", "clipboard", "gallery", "single"],
+                "input_values": {
+                    "path": "",
+                    "types": ""
+                }
             }
         }
         
@@ -352,7 +411,9 @@ def main():
         params = {
             'options': {
                 '--delete-after': args.delete_after,
-                '--clipboard': args.clipboard
+                '--clipboard': args.clipboard,
+                '--single': args.single,
+                '--gallery': args.gallery
             },
             'inputs': {
                 '--path': args.path or '',
