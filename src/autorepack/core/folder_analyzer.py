@@ -26,7 +26,7 @@ from rich.logging import RichHandler
 
 
 # 从通用工具模块导入共用功能
-from autorepack.common_utils import (
+from autorepack.core.common_utils import (
     DEFAULT_FILE_TYPES, COMPRESS_MODE_ENTIRE, COMPRESS_MODE_SELECTIVE, COMPRESS_MODE_SKIP,
     FileTypeManager, get_file_type, is_file_in_types, is_blacklisted_path, get_folder_size,try_extended_media_match
 )

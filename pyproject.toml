@@ -42,7 +42,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["autorepack"]
-
+package-dir = {"" = "src"}
 [tool.black]
 line-length = 88
 target-version = ["py311"]

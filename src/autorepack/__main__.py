@@ -22,11 +22,11 @@ console = Console()
 
 # 导入当前包内的模块
 try:
-    from autorepack.folder_analyzer import analyze_folder as analyzer
+    from autorepack.core.folder_analyzer import analyze_folder as analyzer
 except ImportError as e:
     console.print(f"[red]无法导入folder_analyzer模块: {str(e)}[/red]")
 try:
-    from autorepack.zip_compressor import ZipCompressor as compressor
+    from autorepack.core.zip_compressor import ZipCompressor as compressor
 except ImportError as e:
     console.print(f"[red]zip_compressor: {str(e)}[/red]")
 
@@ -290,7 +290,7 @@ def run_with_params(params: Dict[str, Any]) -> int:
         
         # 如果是单层打包模式或画集模式，使用SinglePacker
         if single_mode or gallery_mode:
-            from autorepack.single_packer import SinglePacker
+            from autorepack.core.single_packer import SinglePacker
             
             packer = SinglePacker()
             
@@ -318,10 +318,8 @@ def run_with_params(params: Dict[str, Any]) -> int:
         if not config_path:
             logger.error("文件夹分析失败")
             return 1
-        
-        # 询问用户是否继续压缩
-        if Confirm.ask("[yellow]是否继续进行压缩操作?[/yellow]", default=True):
-            # 压缩文件夹
+          # 询问用户是否继续压缩
+        if Confirm.ask("[yellow]是否继续进行压缩操作?[/yellow]", default=True):            # 压缩文件夹
             logger.info(f"开始压缩文件夹，配置文件: {config_path}")
             success = compress_folder(config_path, delete_after=delete_after)
             
@@ -340,7 +338,7 @@ def run_with_params(params: Dict[str, Any]) -> int:
             
     except KeyboardInterrupt:
         console.print("\n[yellow]程序被用户中断[/yellow]")
-        return 1
+        return 0  # 标准的 SIGINT 退出码
     except Exception as e:
         console.print(f"[red]程序运行时出错: {str(e)}[/red]")
         import traceback
@@ -378,14 +376,15 @@ def launch_tui_mode(parser: argparse.ArgumentParser) -> int:
             parser=parser,  # 使用命令行解析器自动生成选项
             rich_mode=USE_RICH,
             preset_configs=preset_configs,  # 添加预设配置
-        )
-        # 如果结果不为空，处理参数
+        )        # 如果结果不为空，处理参数
         if USE_RICH:
             return run_with_params(result)
         else:
             result.run()
-            # console.print("[yellow]操作已取消[/yellow]")
-            # return 0
+            return 0  # 默认返回成功
+    except KeyboardInterrupt:
+        console.print("\n[yellow]程序被用户中断[/yellow]")
+        return 0  # 标准的 SIGINT 退出码
     except Exception as e:
         console.print(f"[red]启动配置界面时出错: {str(e)}[/red]")
         import traceback
@@ -420,10 +419,12 @@ def main():
                 '--types': args.types or ''
             }
         }
-        
-        # 使用统一的处理函数
+          # 使用统一的处理函数
         return run_with_params(params)
         
+    except KeyboardInterrupt:
+        console.print("\n[yellow]程序被用户中断[/yellow]")
+        return 0  # 标准的 SIGINT 退出码
     except Exception as e:
         console.print(f"[red]程序运行时出错: {str(e)}[/red]")
         import traceback
