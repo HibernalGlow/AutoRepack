@@ -277,16 +277,23 @@ def run_with_params(params: Dict[str, Any]) -> int:
         use_clipboard = params['options'].get('--clipboard', False)
         single_mode = params['options'].get('--single', False)
         gallery_mode = params['options'].get('--gallery', False)
-        
-        # 获取处理路径
+          # 获取处理路径
         if use_clipboard:
             logger.info("从剪贴板获取路径")
             folder_path = get_path_from_clipboard()
         
+        # 如果路径为空，提示用户交互式输入
         if not folder_path:
-            console.print("[red]错误: 未指定有效的处理路径[/red]")
-            console.print("使用 --path 指定路径或使用 --clipboard 从剪贴板读取路径")
-            return 1
+            console.print("[yellow]提示: 未指定有效的处理路径[/yellow]")
+            from rich.prompt import Prompt
+            folder_path = Prompt.ask("[blue]请输入要处理的路径[/blue]")
+            
+            # 验证输入的路径是否有效
+            if not folder_path or not os.path.exists(folder_path):
+                console.print("[red]错误: 输入的路径不存在或无效[/red]")
+                return 1
+            
+            logger.info(f"用户输入路径: {folder_path}")
         
         # 如果是单层打包模式或画集模式，使用SinglePacker
         if single_mode or gallery_mode:
