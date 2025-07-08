@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple, Any, Optional, Union
 from dataclasses import dataclass, field, asdict
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 导入Rich库
 from rich.console import Console
@@ -421,25 +422,26 @@ class FolderAnalyzer:
         # 计算文件夹权重
         folder_info.weight = self.calculate_folder_weight(folder_path)
         
-        # 递归处理所有子文件夹
+        # 递归处理所有子文件夹（多线程并发）
         children = []
         has_child_with_archive = False
-        
-        for item in folder_path.glob('*'):
-            if item.is_dir():
-                child_info = self._build_folder_tree(
-                    item, 
-                    parent_path=str(folder_path),
-                    depth=depth + 1,
-                    target_file_types=target_file_types
-                )
-                
+        subfolders = [item for item in folder_path.glob('*') if item.is_dir()]
+        def process_child(item):
+            return self._build_folder_tree(
+                item, 
+                parent_path=str(folder_path),
+                depth=depth + 1,
+                target_file_types=target_file_types
+            )
+        with ThreadPoolExecutor() as executor:
+            future_to_item = {executor.submit(process_child, item): item for item in subfolders}
+            for future in as_completed(future_to_item):
+                child_info = future.result()
                 if child_info:
                     children.append(child_info)
                     # 检查子文件夹中是否有archive类型
                     if child_info.file_types.get("archive", 0) > 0 or child_info.compress_mode == self.COMPRESS_MODE_SKIP:
                         has_child_with_archive = True
-        
         # 按权重降序和名称升序排序子文件夹
         children.sort(key=lambda x: (-x.weight, x.name))
         folder_info.children = children
@@ -448,32 +450,23 @@ class FolderAnalyzer:
         try:
             all_items = list(folder_path.glob('*'))
             regular_files = [f for f in all_items if f.is_file()]
-            
-            # 记录总文件数和总大小
+            # 记录总文件数
             folder_info.total_files = len(regular_files)
-            folder_info.total_size = sum(f.stat().st_size for f in regular_files)
-            folder_info.size_mb = folder_info.total_size / (1024 * 1024)
-            
+            # 注释掉统计文件大小相关代码
+            # folder_info.total_size = sum(f.stat().st_size for f in regular_files)
+            # folder_info.size_mb = folder_info.total_size / (1024 * 1024)
             # 分析文件类型分布
             file_types_count = Counter()
             file_ext_count = Counter()
-            
             for file in regular_files:
-                # 获取文件扩展名
                 ext = file.suffix.lower()
                 file_ext_count[ext] += 1
-                
-                # 获取文件分类
                 file_type = get_mime_category(file)
                 if file_type:
                     file_types_count[file_type] += 1
-            
-            # 记录文件类型分布
             folder_info.file_types = dict(file_types_count)
-            folder_info.file_extensions = dict(file_ext_count)  # 添加文件扩展名统计
+            folder_info.file_extensions = dict(file_ext_count)
             folder_info.dominant_types = self._get_dominant_types(folder_info.file_types)
-            
-            # 确定压缩模式 - 传入目标文件类型和是否有带archive的子文件夹
             folder_info.compress_mode, folder_info.file_extensions = self._determine_compress_mode(
                 folder_path, 
                 regular_files, 
@@ -481,25 +474,17 @@ class FolderAnalyzer:
                 target_file_types,
                 has_child_with_archive
             )
-            
-            # 根据需求修改entire模式条件：
-            # entire模式的添加需要每层子键中file_types没有archive 同时compress_mode为空或skip
             for child in folder_info.children:
                 if child.compress_mode not in [None, "", self.COMPRESS_MODE_SKIP]:
-                    # 如果有子文件夹需要压缩，则父文件夹不使用entire模式
                     if folder_info.compress_mode == self.COMPRESS_MODE_ENTIRE:
                         folder_info.compress_mode = self.COMPRESS_MODE_SELECTIVE
-            
-            # 生成推荐处理方式
             folder_info.recommendation = self._generate_recommendation(
                 folder_path,
                 file_types_count,
                 folder_info.compress_mode
             )
-            
         except Exception as e:
             logging.error(f"分析文件夹时出错: {folder_path}, {str(e)}")
-        
         return folder_info
     
     def generate_config_json(self, root_folder: Path,

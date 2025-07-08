@@ -16,6 +16,7 @@ from typing import List, Dict, Union, Any, Optional, Tuple
 from datetime import datetime
 
 # 导入Rich库
+from autorepack.__main__ import COMPRESSION_LEVEL
 from rich.console import Console
 from rich.tree import Tree
 from rich.panel import Panel
@@ -32,7 +33,8 @@ from autorepack.core.folder_analyzer import display_folder_structure
 # 设置Rich日志记录器
 console = Console()
 
-
+# 压缩模式常量
+COMPRESSION_LEVEL = 7
 # 压缩模式常量
 COMPRESS_MODE_ENTIRE = "entire"      # 整体压缩
 COMPRESS_MODE_SELECTIVE = "selective" # 选择性压缩
@@ -123,7 +125,7 @@ class CompressionResult:
 class ZipCompressor:
     """压缩处理类，封装核心压缩操作"""
     
-    def __init__(self, compression_level: int = 5):
+    def __init__(self, compression_level: int = COMPRESSION_LEVEL):
         """
         初始化压缩处理器
         
@@ -421,8 +423,8 @@ class ZipCompressor:
         if result_code == 0:
             logging.info(f"[#process]✅ 压缩完成: {target_zip}")
             
-            # 计算原始文件夹大小
-            original_size = get_folder_size(folder_path) if folder_path.exists() else 0
+            # 使用之前计算好的total_size作为原始大小
+            original_size = total_size
             
             # 计算压缩包大小
             compressed_size = target_zip.stat().st_size if target_zip.exists() else 0

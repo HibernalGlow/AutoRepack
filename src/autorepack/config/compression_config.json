@@ -1,0 +1,33 @@
+{
+    "compression": {
+        "level": 5,
+        "description": "压缩级别，范围 0-9",
+        "details": {
+            "0": "仅存储（无压缩）",
+            "1": "最快速度，压缩率最低",
+            "3": "快速压缩",
+            "5": "标准压缩（默认）",
+            "7": "最大压缩",
+            "9": "最大压缩率，最慢速度"
+        }
+    },
+    "file_types": {
+        "image": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico"],
+        "video": [".mp4", ".avi", ".mov", ".wmv", ".mkv", ".flv", ".webm", ".m4v"],
+        "audio": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a"],
+        "document": [".pdf", ".doc", ".docx", ".txt", ".md", ".rtf", ".odt"],
+        "archive": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"],
+        "executable": [".exe", ".msi", ".deb", ".rpm", ".dmg", ".app"]
+    },
+    "paths": {
+        "temp_dir": "temp",
+        "output_dir": "output",
+        "log_dir": "logs"
+    },
+    "advanced": {
+        "progress_update_interval": 0.1,
+        "max_file_size_mb": 1000,
+        "skip_hidden_files": true,
+        "preserve_timestamps": true
+    }
+}
