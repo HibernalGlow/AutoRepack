@@ -1,6 +1,6 @@
 {
     "compression": {
-        "level": 5,
+        "level": 7,
         "description": "压缩级别，范围 0-9",
         "details": {
             "0": "仅存储（无压缩）",

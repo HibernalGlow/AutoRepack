@@ -16,7 +16,7 @@ from typing import List, Dict, Union, Any, Optional, Tuple
 from datetime import datetime
 
 # 导入Rich库
-from autorepack.__main__ import COMPRESSION_LEVEL
+from autorepack.config.config import get_compression_level
 from rich.console import Console
 from rich.tree import Tree
 from rich.panel import Panel
@@ -124,14 +124,14 @@ class CompressionResult:
 
 class ZipCompressor:
     """压缩处理类，封装核心压缩操作"""
-    
-    def __init__(self, compression_level: int = COMPRESSION_LEVEL):
+    def __init__(self, compression_level: int = None):
         """
         初始化压缩处理器
-        
         """
-        self.compression_level = compression_level
-        
+        if compression_level is None:
+            self.compression_level = get_compression_level()
+        else:
+            self.compression_level = compression_level
         # 不再需要检查文件是否存在，因为我们使用的是系统命令
     
     def compress_files(self, source_path: Path, target_zip: Path, file_extensions: List[str] = None, delete_source: bool = False) -> CompressionResult:

@@ -28,6 +28,7 @@ except ImportError as e:
 try:
     from autorepack.core.zip_compressor import ZipCompressor as compressor
 except ImportError as e:
+    compressor = None
     console.print(f"[red]zip_compressor: {str(e)}[/red]")
 
 # 导入剪贴板模块（如果可用）
@@ -40,7 +41,7 @@ except ImportError:
 
 # 配置常量
 SEVEN_ZIP_PATH = "C:\\Program Files\\7-Zip\\7z.exe"  # 默认7z路径
-COMPRESSION_LEVEL = 5  # 1-9，9为最高压缩率
+from autorepack.config.config import get_compression_level
 USE_RICH = True
 
 from loguru import logger
@@ -224,6 +225,9 @@ def analyze_folder(folder_path: Union[str, Path], target_file_types: List[str] =
         return None
 
 def compress_folder(config_path: Union[str, Path], delete_after: bool = False) -> bool:
+    if compressor is None:
+        console.print("[red]错误: 未能导入zip_compressor模块，无法进行压缩操作[/red]")
+        return False
     """根据配置文件压缩文件夹"""
     try:
         # 确保路径是Path对象

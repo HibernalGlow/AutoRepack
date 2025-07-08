@@ -18,7 +18,7 @@ dependencies = [
     "rich>=13.3.0",
     "loguru>=0.7.0",
     "pyperclip>=1.8.2",
-    "PresetUI @ git+https://github.com/HibernalGlow/PresetUI.git",
+    "PresetUI @ git+https://github.com/HibernalGlow/PresetUI.git@main#egg=PresetUI&subdirectory=.&depth=1",
 ]
 
 [project.optional-dependencies]
