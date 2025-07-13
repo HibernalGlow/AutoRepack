@@ -376,7 +376,15 @@ def launch_tui_mode(parser: argparse.ArgumentParser) -> int:
                     "path": "",
                     "types": ""
                 }
-            }
+            },
+            "图片文本处理": {
+                "description": "仅处理图片文件(从剪贴板读取路径)",
+                "checkbox_options": ["delete_after","clipboard"],
+                "input_values": {
+                    "path": "",
+                    "types": "image,text"
+                }
+            },            
         }
         
         # 使用rich_preset版本的create_config_app

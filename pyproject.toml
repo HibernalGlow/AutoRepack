@@ -35,7 +35,7 @@ dev = [
 
 [project.scripts]
 autorepack = "autorepack.__main__:main"
-
+repacku = "autorepack.__main__:main"
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
