@@ -124,14 +124,19 @@ class CompressionResult:
 
 class ZipCompressor:
     """压缩处理类，封装核心压缩操作"""
-    def __init__(self, compression_level: int = None):
+    def __init__(self, compression_level: int = None, threads: int = 16):
         """
         初始化压缩处理器
+        
+        Args:
+            compression_level: 压缩级别 (0-9)
+            threads: 压缩线程数，默认16
         """
         if compression_level is None:
             self.compression_level = get_compression_level()
         else:
             self.compression_level = compression_level
+        self.threads = threads
         # 不再需要检查文件是否存在，因为我们使用的是系统命令
     
     def compress_files(self, source_path: Path, target_zip: Path, file_extensions: List[str] = None, delete_source: bool = False) -> CompressionResult:
@@ -225,9 +230,9 @@ class ZipCompressor:
             wildcard_str = "\"*\""
             logging.info(f"[#process]📦 没有指定文件类型，使用通配符 {wildcard_str}")
         
-        # 构建压缩命令 - 移除-aou参数和-r参数
+        # 构建压缩命令 - 移除-aou参数和-r参数，添加线程数参数
         # 切换到源文件夹，使用绝对路径指定目标zip文件
-        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level}'
+        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level} -mmt={self.threads}'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:
@@ -383,10 +388,10 @@ class ZipCompressor:
         # 根据keep_folder_structure参数构建不同的命令
         if keep_folder_structure:
             # 保留最外层文件夹结构 - 压缩整个文件夹
-            cmd = f'cd /d "{parent_dir_str}" && "7z" a -tzip "{target_zip_str}" "{folder_name}\\" -r -mx={self.compression_level} -aou'
+            cmd = f'cd /d "{parent_dir_str}" && "7z" a -tzip "{target_zip_str}" "{folder_name}\\" -r -mx={self.compression_level} -mmt={self.threads} -aou'
         else:
             # 不保留最外层文件夹结构 - 先切换到文件夹内部，然后压缩所有内容
-            cmd = f'cd /d "{folder_path_str}" && "7z" a -tzip "{target_zip_str}" * -r -mx={self.compression_level} -aou'
+            cmd = f'cd /d "{folder_path_str}" && "7z" a -tzip "{target_zip_str}" * -r -mx={self.compression_level} -mmt={self.threads} -aou'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:

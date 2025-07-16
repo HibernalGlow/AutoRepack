@@ -279,14 +279,14 @@ def interactive_mode():
     # 获取文件夹结构选项
     keep_folder_structure = Confirm.ask(
         "[bold yellow]是否保留最外层文件夹结构?[/bold yellow]",
-        default=True
+        default=False
     )
     
     # 获取删除源文件选项
     delete_source = False
-    if Confirm.ask("[bold red]是否在压缩成功后删除源文件夹? (危险操作)[/bold red]", default=False):
+    if Confirm.ask("[bold red]是否在压缩成功后删除源文件夹? (危险操作)[/bold red]", default=True):
         # 二次确认
-        if Confirm.ask("[bold red]确认删除源文件夹? 此操作不可逆![/bold red]", default=False):
+        if Confirm.ask("[bold red]确认删除源文件夹? 此操作不可逆![/bold red]", default=True):
             delete_source = True
         else:
             console.print("[green]已取消删除源文件夹选项[/green]")
