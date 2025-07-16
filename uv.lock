@@ -10,6 +10,7 @@ dependencies = [
     { name = "loguru" },
     { name = "presetui" },
     { name = "pyperclip" },
+    { name = "pytest" },
     { name = "rich" },
 ]
 
@@ -27,8 +28,9 @@ requires-dist = [
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
-    { name = "presetui", git = "https://github.com/HibernalGlow/PresetUI.git" },
+    { name = "presetui", git = "https://github.com/HibernalGlow/PresetUI.git?subdirectory=.&rev=main" },
     { name = "pyperclip", specifier = ">=1.8.2" },
+    { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "rich", specifier = ">=13.3.0" },
 ]
@@ -245,8 +247,8 @@ wheels = [
 
 [[package]]
 name = "presetui"
-version = "0.1.0"
-source = { git = "https://github.com/HibernalGlow/PresetUI.git#a05188dab5ba9d7e5f55319e81b2f18cc61e2fcd" }
+version = "0.1.1"
+source = { git = "https://github.com/HibernalGlow/PresetUI.git?subdirectory=.&rev=main#8cd53f7abfa2f88f491173c48d1931911df53787" }
 dependencies = [
     { name = "pyperclip" },
     { name = "pyyaml" },

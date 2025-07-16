@@ -309,8 +309,15 @@ class ZipCompressor:
             
             return CompressionResult(False, error_message=error_output)
 
-    def compress_entire_folder(self, folder_path: Path, target_zip: Path, delete_source: bool = False) -> CompressionResult:
-        """压缩整个文件夹，保留最外层文件夹结构"""
+    def compress_entire_folder(self, folder_path: Path, target_zip: Path, delete_source: bool = False, keep_folder_structure: bool = True) -> CompressionResult:
+        """压缩整个文件夹
+        
+        Args:
+            folder_path: 源文件夹路径
+            target_zip: 目标压缩包路径
+            delete_source: 是否删除源文件
+            keep_folder_structure: 是否保留最外层文件夹结构
+        """
         logging.info(f"[#process]🔄 开始压缩整个文件夹: {folder_path}")
         
         # 确保folder_path是Path对象
@@ -362,22 +369,34 @@ class ZipCompressor:
         
         console.print(f"[bold cyan]📦 准备压缩整个文件夹[/] [bold]{folder_name}[/] - [bold green]{total_files}个文件[/] ([bold blue]{total_size/1024/1024:.2f}MB[/])")
         
+        if keep_folder_structure:
+            console.print(f"[cyan]📁 压缩模式:[/] 保留文件夹结构 ({folder_name}\\)")
+        else:
+            console.print(f"[cyan]📁 压缩模式:[/] 直接压缩内容 (不保留外层文件夹)")
+        
         # 使用完整路径进行压缩，避免文件名截断问题
         # 为所有路径添加引号，正确处理包含空格的路径
         target_zip_str = str(target_zip)
         folder_path_str = str(folder_path)
         parent_dir_str = str(parent_dir)
         
-                # 构建命令 - 使用完整路径代替相对路径，避免文件名截断
-        # 移除不支持的 -bs 参数
-        cmd = f'cd /d "{parent_dir_str}" && "7z" a -tzip "{target_zip_str}" "{folder_name}\\" -r -mx={self.compression_level} -aou'
+        # 根据keep_folder_structure参数构建不同的命令
+        if keep_folder_structure:
+            # 保留最外层文件夹结构 - 压缩整个文件夹
+            cmd = f'cd /d "{parent_dir_str}" && "7z" a -tzip "{target_zip_str}" "{folder_name}\\" -r -mx={self.compression_level} -aou'
+        else:
+            # 不保留最外层文件夹结构 - 先切换到文件夹内部，然后压缩所有内容
+            cmd = f'cd /d "{folder_path_str}" && "7z" a -tzip "{target_zip_str}" * -r -mx={self.compression_level} -aou'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:
             cmd += " -sdel"
         
         logging.info(f"[#process]🔄 执行压缩命令: {cmd}")
-        logging.info(f"[#process]📦 保留外层文件夹结构: {folder_name}")
+        if keep_folder_structure:
+            logging.info(f"[#process]📦 保留外层文件夹结构: {folder_name}")
+        else:
+            logging.info(f"[#process]📦 直接压缩文件夹内容，不保留外层结构")
         
         # 使用进度条创建压缩跟踪器
         with Progress(*progress_columns, console=console) as progress:
@@ -594,10 +613,14 @@ class ZipCompressor:
             logging.info(f"[#process]🔍 处理文件夹: [bold]{folder_name}[/] ({size_mb:.2f}MB) - 模式: {compress_mode}")
             
             if compress_mode == COMPRESS_MODE_ENTIRE:
+                # 检查是否有keep_folder_structure配置
+                keep_structure = folder_info.get("keep_folder_structure", True)
+                
                 result = self.compress_entire_folder(
                     folder_path, 
                     folder_path.with_suffix(".zip"), 
-                    delete_after_success
+                    delete_after_success,
+                    keep_structure
                 )
             elif compress_mode == COMPRESS_MODE_SELECTIVE:
                 # 获取文件扩展名统计信息，如果没有则使用文件类型

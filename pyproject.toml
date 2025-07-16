@@ -19,6 +19,7 @@ dependencies = [
     "loguru>=0.7.0",
     "pyperclip>=1.8.2",
     "PresetUI @ git+https://github.com/HibernalGlow/PresetUI.git@main#egg=PresetUI&subdirectory=.&depth=1",
+    "pytest>=8.3.5",
 ]
 
 [project.optional-dependencies]
@@ -36,12 +37,14 @@ dev = [
 [project.scripts]
 autorepack = "autorepack.__main__:main"
 repacku = "autorepack.__main__:main"
+findj = "findj.__main__:main"
+
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["autorepack"]
+packages = ["autorepack", "findj"]
 package-dir = {"" = "src"}
 [tool.black]
 line-length = 88
