@@ -9,15 +9,15 @@
 """
 
 import os
-import shutil
-import tempfile
-import subprocess
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from loguru import logger
-# 使用autorepack的日志器
 from rich.console import Console
+
+# 复用核心压缩器
+from autorepack.core.zip_compressor import ZipCompressor, CompressionResult
+
 console = Console()
 
 class SinglePacker:
@@ -31,13 +31,30 @@ class SinglePacker:
     
     SUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.jxl', '.avif', '.gif')
     
-    def __init__(self):
-        """初始化单层打包工具
+    def __init__(self, compression_level: Optional[int] = None, threads: int = 16):
+        """初始化单层打包工具并复用 ZipCompressor
         
         Args:
-            logger: 日志对象，如果不提供将使用默认日志器
+            compression_level: 压缩级别(0-9)，不传则读取配置
+            threads: 压缩线程数
         """
+        self.compressor = ZipCompressor(compression_level=compression_level, threads=threads)
+
+    # ---------------- Internal helpers -----------------
+    def _has_internal_archive(self, folder_path: str | Path) -> bool:
+        """检测文件夹内部(递归)是否已存在压缩包文件
         
+        用于跳过已经含有压缩结果的目录，避免重复打包。
+        支持常见后缀: .zip .7z .rar .tar .gz .bz2 .xz
+        """
+        p = Path(folder_path)
+        if not p.exists() or not p.is_dir():
+            return False
+        archive_exts = {'.zip', '.7z', '.rar', '.tar', '.gz', '.bz2', '.xz'}
+        for child in p.rglob('*'):
+            if child.is_file() and child.suffix.lower() in archive_exts:
+                return True
+        return False
     
     def pack_directory(self, directory_path: str, delete_after: bool = True):
         """处理指定目录的单层打包
@@ -78,47 +95,57 @@ class SinglePacker:
             total_tasks = len(subdirs) + (1 if images else 0)
             current_task = 0
             
-            # 处理子文件夹
+            # 处理子文件夹 (使用 ZipCompressor)
             for subdir in subdirs:
                 current_task += 1
-                progress = (current_task / total_tasks) * 100
+                progress = (current_task / total_tasks) * 100 if total_tasks else 100
                 logger.info(f"总进度: ({current_task}/{total_tasks}) {progress:.1f}%")
                 console.print(f"[cyan]总进度: ({current_task}/{total_tasks}) {progress:.1f}%[/cyan]")
-                
+
                 subdir_name = os.path.basename(subdir)
-                archive_name = f"{subdir_name}.zip"
-                archive_path = os.path.join(directory_path, archive_name)
-                
+
+                # 检查内部是否已有压缩包
+                if self._has_internal_archive(subdir):
+                    logger.info(f"⏭️ 跳过子文件夹(已含压缩包): {subdir_name}")
+                    console.print(f"[yellow]⏭️ 跳过子文件夹(已含压缩包): {subdir_name}[/yellow]")
+                    continue
+
+                archive_path = Path(directory_path) / f"{subdir_name}.zip"
                 logger.info(f"🔄 打包子文件夹: {subdir_name}")
                 console.print(f"[blue]🔄 打包子文件夹: {subdir_name}[/blue]")
-                
-                if self._create_archive(subdir, archive_path):
-                    if delete_after:
-                        self._cleanup_source(subdir)
-            
-            # 处理散图文件
+
+                result = self.compressor.compress_entire_folder(
+                    Path(subdir),
+                    archive_path,
+                    delete_source=delete_after,
+                    keep_folder_structure=True  # 原逻辑是仅包含内容，不保留外层
+                )
+                if not result.success:
+                    logger.error(f"❌ 子文件夹压缩失败: {subdir_name} -> {result.error_message}")
+                    console.print(f"[red]❌ 子文件夹压缩失败: {subdir_name}[/red]")
+
+            # 处理散图文件 (复用 compress_files)
             if images:
                 current_task += 1
-                progress = (current_task / total_tasks) * 100
+                progress = (current_task / total_tasks) * 100 if total_tasks else 100
                 logger.info(f"总进度: ({current_task}/{total_tasks}) {progress:.1f}%")
                 console.print(f"[cyan]总进度: ({current_task}/{total_tasks}) {progress:.1f}%[/cyan]")
-                
-                images_archive_name = f"{base_name}.zip"
-                images_archive_path = os.path.join(directory_path, images_archive_name)
-                
-                # 创建临时目录存放图片
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    for image in images:
-                        shutil.copy2(image, temp_dir)
-                    
-                    logger.info(f"🔄 打包散图文件: {len(images)}个文件")
-                    console.print(f"[blue]🔄 打包散图文件: {len(images)}个文件[/blue]")
-                    
-                    if self._create_archive(temp_dir, images_archive_path):
-                        # 删除原始图片文件
-                        if delete_after:
-                            for image in images:
-                                self._cleanup_source(image)
+
+                images_archive_path = Path(directory_path) / f"{base_name}.zip"
+                logger.info(f"🔄 打包散图文件: {len(images)}个文件")
+                console.print(f"[blue]🔄 打包散图文件: {len(images)}个文件[/blue]")
+
+                # 使用 compress_files 非递归匹配同级图片；传入扩展名列表
+                image_ext_list = list(self.SUPPORTED_IMAGE_EXTENSIONS)
+                result = self.compressor.compress_files(
+                    Path(directory_path),
+                    images_archive_path,
+                    file_extensions=image_ext_list,
+                    delete_source=delete_after
+                )
+                if not result.success:
+                    logger.error(f"❌ 散图压缩失败: {result.error_message}")
+                    console.print(f"[red]❌ 散图压缩失败[/red]")
             
             logger.info("✅ 打包完成")
             console.print(f"[green]✅ 打包完成: {directory_path}[/green]")
@@ -127,65 +154,7 @@ class SinglePacker:
             logger.error(f"❌ 处理过程中出现错误: {str(e)}")
             console.print(f"[red]❌ 处理过程中出现错误: {str(e)}[/red]")
     
-    def _create_archive(self, source_path: str, archive_path: str) -> bool:
-        """创建压缩包
-        
-        Args:
-            source_path: 要打包的源路径
-            archive_path: 目标压缩包路径
-            
-        Returns:
-            bool: 压缩是否成功
-        """
-        try:
-            cmd = ['7z', 'a', '-tzip', archive_path, f"{source_path}\\*"]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                logger.error(f"❌ 创建压缩包失败: {archive_path}\n{result.stderr}")
-                console.print(f"[red]❌ 创建压缩包失败: {archive_path}[/red]")
-                return False
-            else:
-                logger.info(f"✅ 创建压缩包成功: {os.path.basename(archive_path)}")
-                console.print(f"[green]✅ 创建压缩包成功: {os.path.basename(archive_path)}[/green]")
-                
-                # 验证压缩包完整性
-                logger.info(f"🔄 正在验证压缩包完整性: {os.path.basename(archive_path)}")
-                test_cmd = ['7z', 't', archive_path]
-                test_result = subprocess.run(test_cmd, capture_output=True, text=True)
-                
-                if test_result.returncode != 0:
-                    logger.error(f"❌ 压缩包验证失败: {archive_path}\n{test_result.stderr}")
-                    console.print(f"[red]❌ 压缩包验证失败: {archive_path}[/red]")
-                    return False
-                else:
-                    logger.info(f"✅ 压缩包验证成功: {os.path.basename(archive_path)}")
-                    console.print(f"[green]✅ 压缩包验证成功: {os.path.basename(archive_path)}[/green]")
-                    return True
-                
-        except Exception as e:
-            logger.error(f"❌ 创建压缩包时出现错误: {str(e)}")
-            console.print(f"[red]❌ 创建压缩包时出现错误: {str(e)}[/red]")
-            return False
-            
-    def _cleanup_source(self, source_path: str):
-        """清理源文件或文件夹
-        
-        Args:
-            source_path: 要清理的源路径
-        """
-        try:
-            if os.path.isdir(source_path):
-                shutil.rmtree(source_path)
-                logger.info(f"✅ 已删除源文件夹: {os.path.basename(source_path)}")
-                console.print(f"[green]✅ 已删除源文件夹: {os.path.basename(source_path)}[/green]")
-            elif os.path.isfile(source_path):
-                os.remove(source_path)
-                logger.info(f"✅ 已删除源文件: {os.path.basename(source_path)}")
-                console.print(f"[green]✅ 已删除源文件: {os.path.basename(source_path)}[/green]")
-        except Exception as e:
-            logger.error(f"❌ 清理源文件时出现错误: {str(e)}")
-            console.print(f"[red]❌ 清理源文件时出现错误: {str(e)}[/red]")
+    # 原 _create_archive 与 _cleanup_source 已由 ZipCompressor 取代
     
     def process_gallery_folders(self, directory_path: str, delete_after: bool = True):
         """处理指定目录下的所有.画集文件夹

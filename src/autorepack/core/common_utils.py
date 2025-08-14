@@ -26,7 +26,7 @@ DEFAULT_FILE_TYPES = {
 # 黑名单关键词列表，用于跳过某些文件夹
 BLACKLIST_KEYWORDS = [
     "node_modules", "__pycache__", ".git", ".svn", "tmp", "temp", 
-    "cache", "logs", ".vscode", ".idea", ".vs", "画集", ".vs"
+    "cache", "logs", ".vscode", ".idea", ".vs", "画集", "动画", ".vs"
 ]
 
 # 定义压缩模式常量
