@@ -15,7 +15,7 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from autorepack.core.zip_compressor import ZipCompressor
+from repacku.core.zip_compressor import ZipCompressor
 
 
 @pytest.fixture

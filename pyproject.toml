@@ -35,8 +35,7 @@ dev = [
 "Bug Tracker" = "https://github.com/HibernalGlow/AutoRepack/issues"
 
 [project.scripts]
-autorepack = "autorepack.__main__:main"
-repacku = "autorepack.__main__:main"
+repacku = "repacku.__main__:main"
 findj = "findj.__main__:main"
 
 [build-system]

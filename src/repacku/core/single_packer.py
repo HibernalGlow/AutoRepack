@@ -16,7 +16,7 @@ from loguru import logger
 from rich.console import Console
 
 # 复用核心压缩器
-from autorepack.core.zip_compressor import ZipCompressor, CompressionResult
+from repacku.core.zip_compressor import ZipCompressor, CompressionResult
 
 console = Console()
 

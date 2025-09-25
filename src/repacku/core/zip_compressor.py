@@ -16,7 +16,7 @@ from typing import List, Dict, Union, Any, Optional, Tuple
 from datetime import datetime
 
 # 导入Rich库
-from autorepack.config.config import get_compression_level
+from repacku.config.config import get_compression_level
 from rich.console import Console
 from rich.tree import Tree
 from rich.panel import Panel
@@ -25,10 +25,10 @@ from rich.text import Text
 from rich.progress import Progress, TextColumn, BarColumn, TaskID, SpinnerColumn
 from rich.progress import TimeElapsedColumn, TimeRemainingColumn, FileSizeColumn, ProgressColumn
 from rich.live import Live
-from autorepack.core.folder_analyzer import FolderInfo
+from repacku.core.folder_analyzer import FolderInfo
 
 # 导入folder_analyzer模块中的显示函数
-from autorepack.core.folder_analyzer import display_folder_structure
+from repacku.core.folder_analyzer import display_folder_structure
 
 # 设置Rich日志记录器
 console = Console()
@@ -519,7 +519,7 @@ class ZipCompressor:
             logging.info("📂 文件夹分析结果:")
             
             # 导入folder_analyzer中的FolderInfo来构建树状结构
-            from autorepack.core.folder_analyzer import FolderInfo
+            from repacku.core.folder_analyzer import FolderInfo
             
             # 从配置转换为FolderInfo结构
             def config_to_folder_info(config_data):

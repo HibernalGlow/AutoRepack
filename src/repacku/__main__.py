@@ -22,11 +22,11 @@ console = Console()
 
 # 导入当前包内的模块
 try:
-    from autorepack.core.folder_analyzer import analyze_folder as analyzer
+    from repacku.core.folder_analyzer import analyze_folder as analyzer
 except ImportError as e:
     console.print(f"[red]无法导入folder_analyzer模块: {str(e)}[/red]")
 try:
-    from autorepack.core.zip_compressor import ZipCompressor as compressor
+    from repacku.core.zip_compressor import ZipCompressor as compressor
 except ImportError as e:
     compressor = None
     console.print(f"[red]zip_compressor: {str(e)}[/red]")
@@ -41,7 +41,7 @@ except ImportError:
 
 # 配置常量
 SEVEN_ZIP_PATH = "C:\\Program Files\\7-Zip\\7z.exe"  # 默认7z路径
-from autorepack.config.config import get_compression_level
+from repacku.config.config import get_compression_level
 USE_RICH = True
 
 from loguru import logger
@@ -301,7 +301,7 @@ def run_with_params(params: Dict[str, Any]) -> int:
         
         # 如果是单层打包模式或画集模式，使用SinglePacker
         if single_mode or gallery_mode:
-            from autorepack.core.single_packer import SinglePacker
+            from repacku.core.single_packer import SinglePacker
             
             packer = SinglePacker()
             
