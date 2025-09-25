@@ -1,4 +1,5 @@
 [project]
+# 项目发布名称可以与内部包名不同，这里仍可保留原名称；如需同步可改成 repacku
 name = "autorepack"
 version = "0.1.0"
 description = "自动重新打包工具 - 简单版，负责处理命令行参数并调用相应的分析和压缩功能"
@@ -7,18 +8,19 @@ requires-python = ">=3.11"
 authors = [
     {name = "PackU", email = "packu@example.com"}
 ]
+license = { text = "MIT" }
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: MIT License",
+    # License classifier 可移除以避免未来弃用警告，已添加 license 字段。
     "Operating System :: OS Independent",
 ]
 dependencies = [
     "rich>=13.3.0",
     "loguru>=0.7.0",
     "pyperclip>=1.8.2",
-    "PresetUI @ git+https://github.com/HibernalGlow/PresetUI.git@main#egg=PresetUI&subdirectory=.&depth=1",
+    # 移除 PresetUI 依赖，改用 Taskfile + lata (pip install lata)
     "pytest>=8.3.5",
 ]
 
@@ -35,7 +37,7 @@ dev = [
 "Bug Tracker" = "https://github.com/HibernalGlow/AutoRepack/issues"
 
 [project.scripts]
-repacku = "repacku.__main__:main"
+repacku = "repacku.cli:run"
 findj = "findj.__main__:main"
 
 [build-system]
@@ -43,7 +45,8 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["autorepack", "findj"]
+# 修复: 原配置引用不存在的 autorepack 目录，实际包为 repacku
+packages = ["repacku", "findj"]
 package-dir = {"" = "src"}
 [tool.black]
 line-length = 88
