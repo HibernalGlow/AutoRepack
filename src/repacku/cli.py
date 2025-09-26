@@ -173,8 +173,23 @@ def compress(
     types: Optional[str] = typer.Option(None, "--types", "-t"),
     clipboard: bool = typer.Option(False, "--clipboard", "-c"),
     delete_after: bool = typer.Option(False, "--delete-after", "-d"),
+    single: bool = typer.Option(False, "--single", help="以单层打包模式执行"),
+    gallery: bool = typer.Option(False, "--gallery", help="以画集模式执行"),
 ):
     p = _ensure_path(path, clipboard)
+
+    # 当指定 single/gallery 时，走 SinglePacker 流程；两者可同时指定，按顺序执行
+    if single or gallery:
+        if types:
+            console.print("[yellow]提示: 在 --single / --gallery 模式下将忽略 --types 参数。[/yellow]")
+        packer = SinglePacker()
+        if gallery:
+            packer.process_gallery_folders(str(p), delete_after=delete_after)
+        if single:
+            packer.pack_directory(str(p), delete_after=delete_after)
+        return
+
+    # 常规 analyze+compress 流程
     type_list = [s.strip() for s in types.split(',')] if types else None
     cfg = _analyze(p, type_list, display=True)
     comp = ZipCompressor()

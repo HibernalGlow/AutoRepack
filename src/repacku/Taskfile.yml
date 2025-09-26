@@ -16,49 +16,25 @@ tasks:
       - task --list
     silent: true
 
-  basic:
-    desc: "从剪贴板读取路径进行分析+可选压缩 (按提示确认)"
-    cmds:
-      - "{{.PYTHON_CMD}} --clipboard"
-
   image-only:
-    desc: "仅针对图片/文档类型(默认示例) 从剪贴板读取路径"
+    desc: "仅针对图片类型(默认示例) 从剪贴板读取路径"
     cmds:
-      - "{{.PYTHON_CMD}} --clipboard --types image"
-
-  single-pack:
-    desc: "单层打包模式 (对子目录逐个压缩)"
-    cmds:
-      - "{{.PYTHON_CMD}} --clipboard --single"
+      - "{{.PYTHON_CMD}} compress --clipboard --types image --delete-after"
 
   gallery-pack:
     desc: "画集模式 (.画集 目录批量处理)"
     cmds:
-      - "{{.PYTHON_CMD}} --clipboard --gallery"
+      - "{{.PYTHON_CMD}} compress --clipboard --gallery --delete-after"
 
-  delete-after:
-    desc: "压缩后删除源文件 (危险操作! 请确认路径)"
+
+  gallery-and-single:
+    desc: "先画集再单层 (可并用)"
     cmds:
-      - "{{.PYTHON_CMD}} --clipboard --delete-after"
+      - "{{.PYTHON_CMD}} compress --clipboard --gallery --single --delete-after"
 
-  image-delete:
-    desc: "仅图片类型并压缩后删除"
+  single-pack:
+    desc: "单层打包 (子目录+散图)"
     cmds:
-      - "{{.PYTHON_CMD}} --clipboard --types image --delete-after"
+      - "{{.PYTHON_CMD}} compress --clipboard --single --delete-after"
 
-  full-image:
-    desc: "图片类型 + 单层打包 + 画集模式组合示例 (可能重复, 按需调整)"
-    cmds:
-      - "{{.PYTHON_CMD}} --clipboard --types image --single --gallery"
-
-  cli:
-    desc: "自定义参数透传 (例: task cli -- --path D:/Data --types image)"
-    cmds:
-      - "{{.PYTHON_CMD}} {{.CLI_ARGS}}"
-
-  # 预留: 将来 Typer 版本添加 --yes/--analyze-only / --no-compress 后可改写以下任务
-  # analyze-only:
-  #   desc: 仅生成 *_config.json (待 CLI 支持 --analyze-only 后启用)
-  #   cmds:
-  #     - "{{.PYTHON_CMD}} --clipboard --types image --analyze-only"
 

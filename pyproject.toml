@@ -22,6 +22,7 @@ dependencies = [
     "pyperclip>=1.8.2",
     # 移除 PresetUI 依赖，改用 Taskfile + lata (pip install lata)
     "pytest>=8.3.5",
+    "typer>=0.19.2",
 ]
 
 [project.optional-dependencies]
