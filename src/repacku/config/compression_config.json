@@ -12,12 +12,16 @@
         }
     },
     "file_types": {
-        "image": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico"],
-        "video": [".mp4", ".avi", ".mov", ".wmv", ".mkv", ".flv", ".webm", ".m4v"],
-        "audio": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a"],
-        "document": [".pdf", ".doc", ".docx", ".txt", ".md", ".rtf", ".odt"],
-        "archive": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"],
-        "executable": [".exe", ".msi", ".deb", ".rpm", ".dmg", ".app"]
+        "text": [".txt", ".md", ".log", ".ini", ".cfg", ".conf", ".json", ".xml", ".yml", ".yaml", ".csv", ".convert", ".sha1"],
+        "image": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg", ".ico", ".raw", ".jxl", ".avif", ".psd", ".sha1"],
+        "video": [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".nov"],
+        "audio": [".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a", ".opus"],
+        "document": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp"],
+        "archive": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso", ".cbz", ".cbr"],
+        "code": [".py", ".js", ".html", ".css", ".java", ".c", ".cpp", ".cs", ".php", ".go", ".rs", ".rb", ".ts"],
+        "font": [".ttf", ".otf", ".woff", ".woff2", ".eot"],
+        "executable": [".exe", ".dll", ".bat", ".sh", ".msi", ".app", ".apk"],
+        "model": [".pth", ".h5", ".pb", ".onnx", ".tflite", ".mlmodel", ".pt", ".bin", ".caffemodel"]
     },
     "paths": {
         "temp_dir": "temp",

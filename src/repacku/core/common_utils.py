@@ -5,23 +5,65 @@
 """
 
 import os
+import json
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Any, Optional, Union
 
 
-# 文件类型和扩展名映射
-DEFAULT_FILE_TYPES = {
-    "text": {".txt", ".md", ".log", ".ini", ".cfg", ".conf", ".json", ".xml", ".yml", ".yaml", ".csv", ".convert"},
-    "image": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg", ".ico", ".raw", ".jxl", ".avif", ".psd"},
-    "video": {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".nov"},
-    "audio": {".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a", ".opus"},
-    "document": {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp"},
-    "archive": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso", ".cbz", ".cbr"},
-    "code": {".py", ".js", ".html", ".css", ".java", ".c", ".cpp", ".cs", ".php", ".go", ".rs", ".rb", ".ts"},
-    "font": {".ttf", ".otf", ".woff", ".woff2", ".eot"},
-    "executable": {".exe", ".dll", ".bat", ".sh", ".msi", ".app", ".apk"},
-    "model": {".pth", ".h5", ".pb", ".onnx", ".tflite", ".mlmodel", ".pt", ".bin", ".caffemodel"}
-}
+def _load_file_types_from_config() -> Dict[str, Set[str]]:
+    """
+    从配置文件加载文件类型映射
+    
+    Returns:
+        Dict[str, Set[str]]: 文件类型到扩展名集合的映射
+    """
+    config_path = Path(__file__).parent.parent / "config" / "compression_config.json"
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        file_types = config.get("file_types", {})
+        
+        # 将JSON中的数组转换为集合
+        result = {}
+        for type_name, extensions in file_types.items():
+            if isinstance(extensions, list):
+                result[type_name] = set(extensions)
+            else:
+                result[type_name] = set()
+                
+        return result
+        
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        # 如果配置文件不存在或格式错误，使用默认映射
+        print(f"警告: 无法加载配置文件 {config_path}, 使用默认文件类型映射。错误: {e}")
+        return _get_default_file_types()
+
+
+def _get_default_file_types() -> Dict[str, Set[str]]:
+    """
+    获取默认的文件类型映射（作为fallback）
+    
+    Returns:
+        Dict[str, Set[str]]: 默认文件类型映射
+    """
+    return {
+        "text": {".txt", ".md", ".log", ".ini", ".cfg", ".conf", ".json", ".xml", ".yml", ".yaml", ".csv", ".convert"},
+        "image": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg", ".ico", ".raw", ".jxl", ".avif", ".psd"},
+        "video": {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".nov"},
+        "audio": {".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a", ".opus"},
+        "document": {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp"},
+        "archive": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso", ".cbz", ".cbr"},
+        "code": {".py", ".js", ".html", ".css", ".java", ".c", ".cpp", ".cs", ".php", ".go", ".rs", ".rb", ".ts"},
+        "font": {".ttf", ".otf", ".woff", ".woff2", ".eot"},
+        "executable": {".exe", ".dll", ".bat", ".sh", ".msi", ".app", ".apk"},
+        "model": {".pth", ".h5", ".pb", ".onnx", ".tflite", ".mlmodel", ".pt", ".bin", ".caffemodel"}
+    }
+
+
+# 文件类型和扩展名映射（从配置文件加载）
+DEFAULT_FILE_TYPES = _load_file_types_from_config()
 
 # 黑名单关键词列表，用于跳过某些文件夹
 BLACKLIST_KEYWORDS = [
