@@ -32,6 +32,9 @@ from repacku.core.common_utils import (
     FileTypeManager, get_file_type, is_file_in_types, is_blacklisted_path, get_folder_size,try_extended_media_match
 )
 
+# 导入配置函数
+from repacku.config.config import get_single_image_compress_rule
+
 
 # 设置Rich日志记录
 console = Console()
@@ -173,6 +176,24 @@ class FolderAnalyzer:
         # 如果没有文件，跳过处理
         if not files:
             return self.COMPRESS_MODE_SKIP, dict(file_ext_count)
+        
+        # 特殊规则：检查是否为单个图片且没有子文件夹的情况
+        if get_single_image_compress_rule():
+            # 检查是否有子文件夹
+            subfolders = [item for item in folder_path.glob('*') if item.is_dir()]
+            has_subfolders = len(subfolders) > 0
+            
+            # 检查是否只有一个文件且为图片
+            if len(files) == 1 and not has_subfolders:
+                file_type_manager = FileTypeManager()
+                single_file = files[0]
+                
+                if file_type_manager.is_file_in_types(single_file, ["image"]):
+                    # 记录图片文件扩展名
+                    ext = single_file.suffix.lower()
+                    if ext:
+                        file_ext_count[ext] += 1
+                    return self.COMPRESS_MODE_ENTIRE, dict(file_ext_count)
             
         # 如果文件夹在黑名单中，跳过处理
         if is_blacklisted_path(folder_path):
