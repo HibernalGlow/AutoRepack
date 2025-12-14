@@ -33,5 +33,11 @@
         "max_file_size_mb": 1000,
         "skip_hidden_files": true,
         "preserve_timestamps": true
+    },
+    "special_rules": {
+        "image_processing": {
+            "single_image_compress": true,
+            "description": "如果文件夹只有一张图片且没有子文件夹，则允许压缩"
+        }
     }
 }

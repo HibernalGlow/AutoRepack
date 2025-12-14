@@ -18,3 +18,11 @@ def get_compression_level():
 def get_file_types():
     cfg = get_config()
     return cfg.get("file_types", {})
+
+def get_special_rules():
+    cfg = get_config()
+    return cfg.get("special_rules", {})
+
+def get_single_image_compress_rule():
+    rules = get_special_rules()
+    return rules.get("image_processing", {}).get("single_image_compress", False)
