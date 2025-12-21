@@ -7,11 +7,12 @@
 2. 并行处理优化
 3. 扩展名缓存
 4. 批量处理减少 I/O
+5. Rich 进度条显示
 """
 
 import os
 from pathlib import Path
-from typing import Dict, List, Set, Optional, Tuple, Iterator, Any
+from typing import Dict, List, Set, Optional, Tuple, Iterator, Any, Callable
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -30,11 +31,20 @@ try:
 except ImportError:
     HAS_JOBLIB = False
 
+# Rich 进度条
+from rich.console import Console
+from rich.progress import (
+    Progress, SpinnerColumn, TextColumn, BarColumn, 
+    TaskProgressColumn, TimeElapsedColumn, MofNCompleteColumn
+)
+
 from repacku.core.common_utils import (
     DEFAULT_FILE_TYPES, BLACKLIST_KEYWORDS,
     COMPRESS_MODE_ENTIRE, COMPRESS_MODE_SELECTIVE, COMPRESS_MODE_SKIP,
     FileTypeManager, is_blacklisted_path
 )
+
+console = Console()
 
 
 # 预编译扩展名到类型的映射 (反向索引，加速查找)
@@ -208,7 +218,8 @@ class FastScanner:
 
     def scan_tree_parallel(self, root_path: Path, 
                           target_types: List[str] = None,
-                          calc_size: bool = False) -> Dict[str, ScanResult]:
+                          calc_size: bool = False,
+                          show_progress: bool = True) -> Dict[str, ScanResult]:
         """
         并行扫描整个目录树
         
@@ -216,6 +227,7 @@ class FastScanner:
             root_path: 根目录路径
             target_types: 目标文件类型
             calc_size: 是否计算文件大小
+            show_progress: 是否显示进度条
             
         Returns:
             Dict[str, ScanResult]: 路径到扫描结果的映射
@@ -223,30 +235,78 @@ class FastScanner:
         results: Dict[str, ScanResult] = {}
         
         # 第一阶段：收集所有目录
-        all_dirs = self._collect_all_dirs(root_path)
+        if show_progress:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]收集目录..."),
+                console=console,
+                transient=True
+            ) as progress:
+                progress.add_task("collecting", total=None)
+                all_dirs = self._collect_all_dirs(root_path)
+        else:
+            all_dirs = self._collect_all_dirs(root_path)
+        
+        total_dirs = len(all_dirs)
         
         # 第二阶段：并行扫描所有目录
-        if HAS_JOBLIB and len(all_dirs) > 100:
-            # 大量目录时使用 joblib
-            scan_results = Parallel(n_jobs=self.max_workers, prefer="threads")(
-                delayed(self.scan_single_folder)(Path(d), target_types, calc_size)
-                for d in all_dirs
-            )
-            for res in scan_results:
-                results[res.path] = res
-        else:
-            # 使用 ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = {
-                    executor.submit(self.scan_single_folder, Path(d), target_types, calc_size): d
-                    for d in all_dirs
-                }
-                for future in as_completed(futures):
-                    try:
-                        res = future.result()
+        if show_progress:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(bar_width=30),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"扫描 {total_dirs} 个目录", total=total_dirs)
+                
+                if HAS_JOBLIB and total_dirs > 100:
+                    # joblib 不支持细粒度进度，一次性更新
+                    scan_results = Parallel(n_jobs=self.max_workers, prefer="threads")(
+                        delayed(self.scan_single_folder)(Path(d), target_types, calc_size)
+                        for d in all_dirs
+                    )
+                    for res in scan_results:
                         results[res.path] = res
-                    except Exception as e:
-                        logging.warning(f"扫描失败: {futures[future]}, {e}")
+                    progress.update(task, completed=total_dirs)
+                else:
+                    with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                        futures = {
+                            executor.submit(self.scan_single_folder, Path(d), target_types, calc_size): d
+                            for d in all_dirs
+                        }
+                        for future in as_completed(futures):
+                            try:
+                                res = future.result()
+                                results[res.path] = res
+                            except Exception as e:
+                                logging.warning(f"扫描失败: {futures[future]}, {e}")
+                            progress.advance(task)
+        else:
+            # 无进度条模式
+            if HAS_JOBLIB and total_dirs > 100:
+                scan_results = Parallel(n_jobs=self.max_workers, prefer="threads")(
+                    delayed(self.scan_single_folder)(Path(d), target_types, calc_size)
+                    for d in all_dirs
+                )
+                for res in scan_results:
+                    results[res.path] = res
+            else:
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    futures = {
+                        executor.submit(self.scan_single_folder, Path(d), target_types, calc_size): d
+                        for d in all_dirs
+                    }
+                    for future in as_completed(futures):
+                        try:
+                            res = future.result()
+                            results[res.path] = res
+                        except Exception as e:
+                            logging.warning(f"扫描失败: {futures[future]}, {e}")
+        
+        return results
         
         return results
     
@@ -288,13 +348,15 @@ class FastFolderAnalyzer:
         self.COMPRESS_MODE_SKIP = COMPRESS_MODE_SKIP
     
     def analyze_folder_tree_fast(self, root_path: Path, 
-                                 target_file_types: List[str] = None) -> Dict[str, Any]:
+                                 target_file_types: List[str] = None,
+                                 show_progress: bool = True) -> Dict[str, Any]:
         """
         快速分析整个文件夹树
         
         Args:
             root_path: 根目录
             target_file_types: 目标文件类型
+            show_progress: 是否显示进度条
             
         Returns:
             分析结果字典
@@ -306,10 +368,14 @@ class FastFolderAnalyzer:
         scan_results = self.scanner.scan_tree_parallel(
             root_path, 
             target_types=target_file_types,
-            calc_size=False  # 不计算大小以提升速度
+            calc_size=False,  # 不计算大小以提升速度
+            show_progress=show_progress
         )
         
         # 构建树结构
+        if show_progress:
+            console.print("[green]✓[/green] 扫描完成，正在构建树结构...")
+        
         return self._build_tree_from_scans(root_path, scan_results, target_file_types)
     
     def _build_tree_from_scans(self, root_path: Path, 
@@ -396,7 +462,8 @@ class FastFolderAnalyzer:
 # 便捷函数
 def fast_scan_folder(folder_path: Path, 
                      target_types: List[str] = None,
-                     max_workers: int = None) -> Dict[str, Any]:
+                     max_workers: int = None,
+                     show_progress: bool = True) -> Dict[str, Any]:
     """
     快速扫描文件夹的便捷函数
     
@@ -404,12 +471,13 @@ def fast_scan_folder(folder_path: Path,
         folder_path: 文件夹路径
         target_types: 目标文件类型
         max_workers: 最大工作线程数
+        show_progress: 是否显示进度条
         
     Returns:
         分析结果字典
     """
     analyzer = FastFolderAnalyzer(max_workers=max_workers)
-    return analyzer.analyze_folder_tree_fast(folder_path, target_types)
+    return analyzer.analyze_folder_tree_fast(folder_path, target_types, show_progress)
 
 
 def benchmark_scan(folder_path: Path, iterations: int = 3) -> Dict[str, float]:

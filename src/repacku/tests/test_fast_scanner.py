@@ -119,7 +119,7 @@ class TestFastScanner:
     
     def test_scan_tree_parallel(self, scanner, temp_dir):
         """测试并行树扫描"""
-        results = scanner.scan_tree_parallel(temp_dir)
+        results = scanner.scan_tree_parallel(temp_dir, show_progress=False)
         
         # 应该扫描到 3 个目录
         assert len(results) == 3
@@ -173,7 +173,7 @@ class TestFastFolderAnalyzer:
     
     def test_analyze_images_only(self, analyzer, temp_dir_images):
         """测试纯图片目录分析"""
-        result = analyzer.analyze_folder_tree_fast(temp_dir_images, ['image'])
+        result = analyzer.analyze_folder_tree_fast(temp_dir_images, ['image'], show_progress=False)
         
         assert result['total_files'] == 3
         assert result['file_types']['image'] == 3
@@ -181,14 +181,14 @@ class TestFastFolderAnalyzer:
     
     def test_analyze_mixed_with_target(self, analyzer, temp_dir_mixed):
         """测试混合目录指定目标类型"""
-        result = analyzer.analyze_folder_tree_fast(temp_dir_mixed, ['image'])
+        result = analyzer.analyze_folder_tree_fast(temp_dir_mixed, ['image'], show_progress=False)
         
         # 只有 1 个图片，不满足最小数量要求
         assert result['compress_mode'] == COMPRESS_MODE_SKIP
     
     def test_analyze_with_archive(self, analyzer, temp_dir_with_archive):
         """测试包含压缩包的目录"""
-        result = analyzer.analyze_folder_tree_fast(temp_dir_with_archive, ['image'])
+        result = analyzer.analyze_folder_tree_fast(temp_dir_with_archive, ['image'], show_progress=False)
         
         # 有压缩包时应该跳过或选择性压缩
         assert result['compress_mode'] in [COMPRESS_MODE_SKIP, COMPRESS_MODE_SELECTIVE]
@@ -204,7 +204,7 @@ class TestFastScanFolder:
             (root / "test.jpg").touch()
             (root / "test.png").touch()
             
-            result = fast_scan_folder(root)
+            result = fast_scan_folder(root, show_progress=False)
             
             assert 'path' in result
             assert 'total_files' in result
