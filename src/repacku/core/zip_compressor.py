@@ -51,33 +51,6 @@ class PercentageColumn(ProgressColumn):
             return Text("0%")
         return Text(f"{task.completed / task.total:.0%}")
 
-class CompressionTracker:
-    """7zip压缩进度跟踪器"""
-    
-    def __init__(self, progress: Progress = None):
-        """初始化跟踪器"""
-        self.progress = progress
-        self.task_id = None  # 全局进度
-        self.total_files = 0
-        self.processed_files = 0
-        self.current_file = ""
-        self._last_update_time = 0
-        
-    
-    def update_from_output(self, line: str) -> None:
-        """从7zip输出更新进度"""
-        # 匹配"正在添加"、"Compressing"或其他7zip输出的文件名部分
-        file_match = re.search(r"(正在添加|Compressing|Adding|Updating)\s+(.+)", line)
-        if file_match:
-            self.current_file = file_match.group(2).strip()
-            self.processed_files += 1
-            if self.progress and self.task_id is not None:
-                # 更新全局进度
-                self.progress.update(
-                    self.task_id, 
-                    completed=self.processed_files,
-                    description=f"[cyan]压缩进度: {self.processed_files}/{self.total_files} 文件[/]"
-                )
 
 class CompressionResult:
     """压缩结果类"""
@@ -159,20 +132,6 @@ class ZipCompressor:
             logging.warning(f"[#process]⚠️ {error_msg}")
             return CompressionResult(False, error_message=error_msg)
         
-        # 创建进度条
-        progress_columns = [
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            PercentageColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            TextColumn("•"),
-            TimeRemainingColumn(),
-        ]
-        
-        console.print(f"[bold cyan]📦 准备选择性压缩[/] [bold]{folder_name}[/] - [bold green]{total_files}个文件[/] ([bold blue]{total_size/1024/1024:.2f}MB[/])")
-        
         # 生成通配符参数
         wildcard_patterns = []
         
@@ -195,83 +154,39 @@ class ZipCompressor:
             wildcard_str = "\"*\""
             logging.info(f"[#process]📦 没有指定文件类型，使用通配符 {wildcard_str}")
         
-        # 构建压缩命令 - 添加 -bsp1 参数输出进度
+        # 构建压缩命令
         # 切换到源文件夹，使用绝对路径指定目标zip文件
-        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level} -mmt={self.threads} -bsp1'
+        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level} -mmt={self.threads}'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:
             cmd += " -sdel"
         
-        # 显示执行的命令
-        logging.info(f"[#process]🔄 执行压缩命令: {cmd}")
+        # 执行压缩
+        logging.info(f"[#process]🔄 执行压缩: {folder_name}")
         
-        # 使用进度条创建压缩跟踪器
-        with Progress(*progress_columns, console=console) as progress:
-            tracker = CompressionTracker(progress)
-            
-            # 只创建全局进度任务
-            tracker.task_id = progress.add_task(f"[cyan]压缩进度: 0/{total_files} 文件[/]", total=total_files)
-            
-            # 设置总文件数
-            tracker.total_files = total_files
-            
-            # 使用Popen而不是run来实时获取输出
-            process = subprocess.Popen(
-                cmd, 
-                shell=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
-                text=True, 
-                bufsize=1,
-                universal_newlines=True
-            )
-            
-            # 实时处理输出
-            for line in process.stdout:
-                tracker.update_from_output(line)
-                # 可选：记录详细日志
-                if "error" in line.lower() or "warning" in line.lower():
-                    logging.warning(f"[#process]{line.strip()}")
-            
-            # 等待进程结束
-            process.wait()
-            result_code = process.returncode
-            
-            # 收集错误输出
-            error_output = ""
-            for line in process.stderr:
-                error_output += line
+        process = subprocess.Popen(
+            cmd, 
+            shell=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True
+        )
         
-        # 如果删除了源文件，但是需要删除空文件夹
+        stdout, stderr = process.communicate()
+        result_code = process.returncode
+        
+        # 如果删除了源文件，删除空文件夹
         if delete_source and result_code == 0:
             self._remove_empty_dirs(source_path)
         
-        # 处理结果并转换为CompressionResult
+        # 处理结果
         if result_code == 0:
-            logging.info(f"[#process]✅ 压缩完成: {target_zip}")
-            # 使用已计算的总大小作为原始大小
             original_size = total_size
-            
-            # 计算压缩包大小
             compressed_size = target_zip.stat().st_size if target_zip.exists() else 0
-            ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-            
-            # 使用Rich显示最终压缩结果
-            console.print(f"[bold green]✅ 压缩完成:[/] [cyan]{folder_name}[/] → [blue]{target_zip.name}[/]")
-            console.print(f"  • 原始大小: [yellow]{original_size/1024/1024:.2f}MB[/]")
-            console.print(f"  • 压缩后大小: [green]{compressed_size/1024/1024:.2f}MB[/]")
-            console.print(f"  • 压缩率: [bold cyan]{ratio:.1f}%[/]")
-            
             return CompressionResult(True, original_size, compressed_size)
         else:
-            logging.error(f"[#process]❌ 压缩失败: {error_output}")
-            
-            # 使用Rich显示错误信息
-            console.print(f"[bold red]❌ 压缩失败:[/] [cyan]{folder_name}[/]")
-            console.print(f"  • 错误信息: [red]{error_output}[/]")
-            
-            return CompressionResult(False, error_message=error_output)
+            return CompressionResult(False, error_message=stderr)
 
     def compress_entire_folder(self, folder_path: Path, target_zip: Path, delete_source: bool = False, keep_folder_structure: bool = True) -> CompressionResult:
         """压缩整个文件夹
@@ -319,79 +234,34 @@ class ZipCompressor:
                 total_files += 1
                 total_size += file_path.stat().st_size
         
-        # 创建进度条
-        progress_columns = [
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            PercentageColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            TextColumn("•"),
-            TimeRemainingColumn(),
-        ]
-        
-        console.print(f"[bold cyan]📦 准备压缩整个文件夹[/] [bold]{folder_name}[/] - [bold green]{total_files}个文件[/] ([bold blue]{total_size/1024/1024:.2f}MB[/])")
-        
-        if keep_folder_structure:
-            console.print(f"[cyan]📁 压缩模式:[/] 保留文件夹结构 ({folder_name}\\)")
-        else:
-            console.print(f"[cyan]📁 压缩模式:[/] 直接压缩内容 (不保留外层文件夹)")
-        
-        # 使用完整路径进行压缩，避免文件名截断问题
-        # 为所有路径添加引号，正确处理包含空格的路径
+        # 使用完整路径进行压缩
         target_zip_str = str(target_zip)
         folder_path_str = str(folder_path)
         parent_dir_str = str(parent_dir)
         
         # 根据keep_folder_structure参数构建不同的命令
         if keep_folder_structure:
-            # 保留最外层文件夹结构 - 压缩整个文件夹
             cmd = f'cd /d "{parent_dir_str}" && "7z" a -tzip "{target_zip_str}" "{folder_name}\\" -r -mx={self.compression_level} -mmt={self.threads} -aou'
         else:
-            # 不保留最外层文件夹结构 - 先切换到文件夹内部，然后压缩所有内容
             cmd = f'cd /d "{folder_path_str}" && "7z" a -tzip "{target_zip_str}" * -r -mx={self.compression_level} -mmt={self.threads} -aou'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:
             cmd += " -sdel"
         
-        logging.info(f"[#process]🔄 执行压缩命令: {cmd}")
-        if keep_folder_structure:
-            logging.info(f"[#process]📦 保留外层文件夹结构: {folder_name}")
-        else:
-            logging.info(f"[#process]📦 直接压缩文件夹内容，不保留外层结构")
+        logging.info(f"[#process]�  执行压缩: {folder_name}")
         
-        # 使用进度条创建压缩跟踪器
-        with Progress(*progress_columns, console=console) as progress:
-            tracker = CompressionTracker(progress)
-            
-            # 使用Popen而不是run来实时获取输出
-            process = subprocess.Popen(
-                cmd, 
-                shell=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
-                text=True, 
-                bufsize=1,
-                universal_newlines=True
-            )
-            
-            # 实时处理输出
-            for line in process.stdout:
-                tracker.update_from_output(line)
-                # 可选：记录详细日志
-                if "error" in line.lower() or "warning" in line.lower():
-                    logging.warning(f"[#process]{line.strip()}")
-            
-            # 等待进程结束
-            process.wait()
-            result_code = process.returncode
-            
-            # 收集错误输出
-            error_output = ""
-            for line in process.stderr:
-                error_output += line
+        # 执行压缩
+        process = subprocess.Popen(
+            cmd, 
+            shell=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True
+        )
+        
+        stdout, stderr = process.communicate()
+        result_code = process.returncode
         
         # 如果压缩成功且需要删除源文件夹但未使用-sdel
         if delete_source and result_code == 0 and not "-sdel" in cmd:
@@ -402,37 +272,13 @@ class ZipCompressor:
             except Exception as e:
                 logging.info(f"[#file_ops]⚠️ 删除源文件夹失败: {e}")
         
-        # 处理结果并转换为CompressionResult
+        # 处理结果
         if result_code == 0:
-            logging.info(f"[#process]✅ 压缩完成: {target_zip}")
-            
-            # 使用之前计算好的total_size作为原始大小
             original_size = total_size
-            
-            # 计算压缩包大小
             compressed_size = target_zip.stat().st_size if target_zip.exists() else 0
-            
-            # 计算压缩率
-            ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-            
-            # 使用Rich显示最终压缩结果
-            console.print(f"[bold green]✅ 压缩完成:[/] [cyan]{folder_name}[/] → [blue]{target_zip.name}[/]")
-            console.print(f"  • 原始大小: [yellow]{original_size/1024/1024:.2f}MB[/]")
-            console.print(f"  • 压缩后大小: [green]{compressed_size/1024/1024:.2f}MB[/]")
-            console.print(f"  • 压缩率: [bold cyan]{ratio:.1f}%[/]")
-            
             return CompressionResult(True, original_size, compressed_size)
         else:
-            logging.error(f"[#process]❌ 压缩失败: {error_output}")
-            # 记录错误详情以便调试
-            logging.error(f"[#process]命令: {cmd}")
-            logging.error(f"[#process]返回码: {result_code}")
-            
-            # 使用Rich显示错误信息
-            console.print(f"[bold red]❌ 压缩失败:[/] [cyan]{folder_name}[/]")
-            console.print(f"  • 错误信息: [red]{error_output}[/]")
-            
-            return CompressionResult(False, error_message=error_output)
+            return CompressionResult(False, error_message=stderr)
     
     def _remove_empty_dirs(self, path: Path) -> None:
         """递归删除空文件夹"""
@@ -566,73 +412,103 @@ class ZipCompressor:
         # 从根节点开始收集
         collect_folders(folder_tree)
         
+        # 过滤出需要处理的文件夹
+        folders_to_compress = [
+            f for f in folders_to_process 
+            if f.get("compress_mode") in [COMPRESS_MODE_ENTIRE, COMPRESS_MODE_SELECTIVE]
+        ]
+        total_folders = len(folders_to_compress)
+        
+        if total_folders == 0:
+            console.print("[yellow]没有需要压缩的文件夹[/yellow]")
+            return []
+        
         results = []
-        for folder_info in folders_to_process:
-            folder_path = Path(folder_info.get("path", ""))
-            compress_mode = folder_info.get("compress_mode", COMPRESS_MODE_SKIP)
+        
+        # 创建全局进度条
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=40),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task(f"[cyan]压缩进度: 0/{total_folders}", total=total_folders)
             
-            # 高亮显示当前处理的文件夹
-            folder_name = folder_info.get("name", folder_path.name)
-            size_mb = folder_info.get("size_mb", 0)
-            logging.info(f"[#process]🔍 处理文件夹: [bold]{folder_name}[/] ({size_mb:.2f}MB) - 模式: {compress_mode}")
-            
-            if compress_mode == COMPRESS_MODE_ENTIRE:
-                # 检查是否有keep_folder_structure配置
-                keep_structure = folder_info.get("keep_folder_structure", True)
+            for idx, folder_info in enumerate(folders_to_compress):
+                folder_path = Path(folder_info.get("path", ""))
+                compress_mode = folder_info.get("compress_mode", COMPRESS_MODE_SKIP)
+                folder_name = folder_info.get("name", folder_path.name)
                 
-                result = self.compress_entire_folder(
-                    folder_path, 
-                    folder_path.with_suffix(".zip"), 
-                    delete_after_success,
-                    keep_structure
-                )
-            elif compress_mode == COMPRESS_MODE_SELECTIVE:
-                # 获取文件扩展名统计信息，如果没有则使用文件类型
-                file_extensions = folder_info.get("file_extensions", {})
+                # 更新进度描述
+                progress.update(task, description=f"[cyan]压缩: {folder_name[:30]}...")
                 
-                # 如果有文件扩展名统计，直接使用扩展名列表
-                if file_extensions:
-                    extensions_list = list(file_extensions.keys())
-                    console.print(f"[cyan]📊 文件扩展名统计:[/] {folder_name}")
-                    for ext, count in sorted(file_extensions.items(), key=lambda x: x[1], reverse=True):
-                        console.print(f"  • {ext}: [green]{count}[/] 个文件")
-                else:
-                    # 否则使用文件类型生成扩展名列表
-                    file_types = folder_info.get("file_types", {})
-                    target_types = list(file_types.keys()) or target_file_types
+                if compress_mode == COMPRESS_MODE_ENTIRE:
+                    keep_structure = folder_info.get("keep_folder_structure", True)
+                    result = self.compress_entire_folder(
+                        folder_path, 
+                        folder_path.with_suffix(".zip"), 
+                        delete_after_success,
+                        keep_structure
+                    )
+                elif compress_mode == COMPRESS_MODE_SELECTIVE:
+                    file_extensions = folder_info.get("file_extensions", {})
                     
-                    # 将文件类型转换为文件扩展名
-                    extensions_list = []
-                    for file_type in target_types:
-                        if file_type == "image":
-                            extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'])
-                        elif file_type == "video":
-                            extensions_list.extend(['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv'])
-                        elif file_type == "document":
-                            extensions_list.extend(['.pdf', '.doc', '.docx', '.txt', '.md'])
+                    if file_extensions:
+                        extensions_list = list(file_extensions.keys())
+                    else:
+                        file_types = folder_info.get("file_types", {})
+                        target_types = list(file_types.keys()) or target_file_types
+                        extensions_list = []
+                        for file_type in target_types:
+                            if file_type == "image":
+                                extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'])
+                            elif file_type == "video":
+                                extensions_list.extend(['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv'])
+                            elif file_type == "document":
+                                extensions_list.extend(['.pdf', '.doc', '.docx', '.txt', '.md'])
+                    
+                    archive_path = folder_path / f"{folder_path.name}.zip"
+                    result = self.compress_files(
+                        folder_path, 
+                        archive_path,
+                        extensions_list,
+                        delete_after_success
+                    )
+                else:
+                    continue
                 
-                # 创建与文件夹同名的压缩包，放在父目录
-                archive_path = folder_path / f"{folder_path.name}.zip"
+                results.append(result)
                 
-                result = self.compress_files(
-                    folder_path, 
-                    archive_path,
-                    extensions_list,  # 直接传递扩展名列表
-                    delete_after_success
-                )
-            else:
-                logging.info(f"[#process]⏭️ 跳过文件夹: {folder_name}")
-                continue
+                # 显示单个文件夹压缩结果
+                if result.success:
+                    ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
+                    progress.console.print(
+                        f"  [green]✓[/green] {folder_name} | "
+                        f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
+                        f"([cyan]{ratio:.0f}%[/cyan])"
+                    )
+                else:
+                    progress.console.print(f"  [red]✗[/red] {folder_name} | {result.error_message[:50]}")
                 
-            results.append(result)
-            
-            # 显示压缩结果
-            if result.success:
-                ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
-                logging.info(f"[#process]✅ 压缩成功: 原始大小 {result.original_size/1024/1024:.2f}MB → " 
-                           f"压缩后 {result.compressed_size/1024/1024:.2f}MB (节省 {ratio:.1f}%)")
-            else:
-                logging.error(f"[#process]❌ 压缩失败: {result.error_message}")
+                # 更新进度
+                progress.update(task, completed=idx + 1, 
+                              description=f"[cyan]压缩进度: {idx + 1}/{total_folders}")
+        
+        # 显示结果摘要
+        success_count = sum(1 for r in results if r.success)
+        fail_count = len(results) - success_count
+        total_original = sum(r.original_size for r in results if r.success)
+        total_compressed = sum(r.compressed_size for r in results if r.success)
+        total_ratio = (1 - total_compressed / total_original) * 100 if total_original > 0 else 0
+        
+        console.print(f"\n[green]✓ 完成[/green] {success_count}/{len(results)} | "
+                     f"总计 {total_original/1024/1024:.1f}MB → {total_compressed/1024/1024:.1f}MB "
+                     f"([cyan]{total_ratio:.0f}%[/cyan])")
         
         return results
     
