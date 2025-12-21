@@ -12,6 +12,8 @@ import logging
 import json
 import re
 import time
+import signal
+import threading
 from pathlib import Path
 from typing import List, Dict, Union, Any, Optional, Tuple
 from datetime import datetime
@@ -41,6 +43,9 @@ console = Console()
 # 计算公式: workers = 逻辑核心数 / 4, 确保 workers * threads <= 逻辑核心数
 DEFAULT_PARALLEL_WORKERS = max(2, min(4, (os.cpu_count() or 4) // 4))
 DEFAULT_COMPRESS_THREADS = max(4, (os.cpu_count() or 8) // DEFAULT_PARALLEL_WORKERS)
+
+# 全局中断标志
+_shutdown_event = threading.Event()
 
 # 压缩模式常量
 COMPRESSION_LEVEL = 7
@@ -521,6 +526,10 @@ class ZipCompressor:
     
     def _execute_single_task(self, task: CompressionTask, delete_source: bool) -> Tuple[CompressionTask, CompressionResult]:
         """执行单个压缩任务（用于并行处理）"""
+        # 检查是否已请求中断
+        if _shutdown_event.is_set():
+            return (task, CompressionResult(False, error_message="用户中断"))
+        
         if task.compress_mode == COMPRESS_MODE_ENTIRE:
             result = self.compress_entire_folder(
                 task.folder_path,
@@ -538,57 +547,83 @@ class ZipCompressor:
         return (task, result)
     
     def _compress_parallel(self, tasks: List[CompressionTask], root_path: str, delete_source: bool) -> List[CompressionResult]:
-        """并行执行压缩任务"""
+        """并行执行压缩任务，支持 Ctrl+C 中断"""
         results = []
         total_tasks = len(tasks)
         completed = 0
         
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(bar_width=40),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            TextColumn("•"),
-            TimeRemainingColumn(),
-            console=console
-        ) as progress:
-            main_task = progress.add_task(f"[cyan]并行压缩: 0/{total_tasks}", total=total_tasks)
-            
-            with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                # 提交所有任务
-                futures = {
-                    executor.submit(self._execute_single_task, task, delete_source): task
-                    for task in tasks
-                }
+        # 重置中断标志
+        _shutdown_event.clear()
+        
+        # 设置信号处理
+        original_handler = signal.getsignal(signal.SIGINT)
+        
+        def signal_handler(signum, frame):
+            console.print("\n[yellow]⚠️ 收到中断信号，正在停止...[/yellow]")
+            _shutdown_event.set()
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(bar_width=40),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                TextColumn("•"),
+                TimeRemainingColumn(),
+                console=console
+            ) as progress:
+                main_task = progress.add_task(f"[cyan]并行压缩: 0/{total_tasks}", total=total_tasks)
                 
-                # 收集结果
-                for future in as_completed(futures):
-                    try:
-                        task, result = future.result()
-                        results.append(result)
-                        completed += 1
+                with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
+                    # 提交所有任务
+                    futures = {
+                        executor.submit(self._execute_single_task, task, delete_source): task
+                        for task in tasks
+                    }
+                    
+                    # 收集结果
+                    for future in as_completed(futures):
+                        # 检查中断
+                        if _shutdown_event.is_set():
+                            # 取消未完成的任务
+                            for f in futures:
+                                f.cancel()
+                            console.print("[yellow]已取消剩余任务[/yellow]")
+                            break
                         
-                        # 显示单个任务结果
-                        display_path = task.relative_path[:40]
-                        if result.success:
-                            ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
-                            progress.console.print(
-                                f"  [green]✓[/green] {display_path} | "
-                                f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
-                                f"([cyan]{ratio:.0f}%[/cyan])"
-                            )
-                        else:
-                            err_msg = result.error_message[:50] if result.error_message else "未知错误"
-                            progress.console.print(f"  [red]✗[/red] {display_path} | {err_msg}")
-                        
-                        progress.update(main_task, completed=completed,
-                                       description=f"[cyan]并行压缩: {completed}/{total_tasks}")
-                    except Exception as e:
-                        completed += 1
-                        results.append(CompressionResult(False, error_message=str(e)))
-                        progress.update(main_task, completed=completed)
+                        try:
+                            task, result = future.result(timeout=0.1)
+                            results.append(result)
+                            completed += 1
+                            
+                            # 显示单个任务结果
+                            display_path = task.relative_path[:40]
+                            if result.success:
+                                ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
+                                progress.console.print(
+                                    f"  [green]✓[/green] {display_path} | "
+                                    f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
+                                    f"([cyan]{ratio:.0f}%[/cyan])"
+                                )
+                            else:
+                                err_msg = result.error_message[:50] if result.error_message else "未知错误"
+                                progress.console.print(f"  [red]✗[/red] {display_path} | {err_msg}")
+                            
+                            progress.update(main_task, completed=completed,
+                                           description=f"[cyan]并行压缩: {completed}/{total_tasks}")
+                        except TimeoutError:
+                            continue
+                        except Exception as e:
+                            completed += 1
+                            results.append(CompressionResult(False, error_message=str(e)))
+                            progress.update(main_task, completed=completed)
+        finally:
+            # 恢复原始信号处理
+            signal.signal(signal.SIGINT, original_handler)
         
         return results
     
