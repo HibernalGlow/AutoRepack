@@ -57,14 +57,10 @@ class CompressionTracker:
     def __init__(self, progress: Progress = None):
         """初始化跟踪器"""
         self.progress = progress
-        self.task_id = None
-        self.file_task_id = None
-        self.total_task_id = None  # 新增：总体进度任务ID
+        self.task_id = None  # 全局进度
         self.total_files = 0
         self.processed_files = 0
         self.current_file = ""
-        self.total_size = 0
-        self.total_completed = 0
         self._last_update_time = 0
         
     
@@ -76,43 +72,12 @@ class CompressionTracker:
             self.current_file = file_match.group(2).strip()
             self.processed_files += 1
             if self.progress and self.task_id is not None:
-                # 更新总体进度
+                # 更新全局进度
                 self.progress.update(
                     self.task_id, 
                     completed=self.processed_files,
-                    description=f"[cyan]总体进度: {self.processed_files}/{self.total_files} 文件[/]"
+                    description=f"[cyan]压缩进度: {self.processed_files}/{self.total_files} 文件[/]"
                 )
-                # 更新固定在底部的总体进度
-                if self.total_task_id is not None:
-                    self.progress.update(
-                        self.total_task_id, 
-                        completed=self.processed_files,
-                        description=f"[bold cyan]总体压缩进度: {self.processed_files}/{self.total_files} 文件[/]"
-                    )
-                # 重置当前文件进度
-                self.progress.update(
-                    self.file_task_id,
-                    completed=0,
-                    description=f"[green]当前文件: {self.current_file}[/]"
-                )
-            return
-            
-        # 匹配百分比进度
-        percent_match = re.search(r"(\d+)%", line)
-        if percent_match and self.progress and self.file_task_id is not None:
-            percent = int(percent_match.group(1))
-            # 更新当前文件进度
-            self.progress.update(
-                self.file_task_id,
-                completed=percent,
-                description=f"[green]当前文件: {self.current_file} - {percent}%[/]"
-            )
-            
-            # 限制更新频率，避免UI刷新过快
-            current_time = time.time()
-            if current_time - self._last_update_time > 0.1:  # 100ms更新一次
-                self.progress.refresh()
-                self._last_update_time = current_time
 
 class CompressionResult:
     """压缩结果类"""
@@ -230,9 +195,9 @@ class ZipCompressor:
             wildcard_str = "\"*\""
             logging.info(f"[#process]📦 没有指定文件类型，使用通配符 {wildcard_str}")
         
-        # 构建压缩命令 - 移除-aou参数和-r参数，添加线程数参数
+        # 构建压缩命令 - 添加 -bsp1 参数输出进度
         # 切换到源文件夹，使用绝对路径指定目标zip文件
-        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level} -mmt={self.threads}'
+        cmd = f'cd /d "{source_path_str}" && "7z" a -tzip "{target_zip_str}" {wildcard_str} -aou -mx={self.compression_level} -mmt={self.threads} -bsp1'
         
         # 如果需要删除源文件，添加-sdel参数
         if delete_source:
@@ -245,14 +210,8 @@ class ZipCompressor:
         with Progress(*progress_columns, console=console) as progress:
             tracker = CompressionTracker(progress)
             
-            # 创建总体进度任务
-            tracker.task_id = progress.add_task(f"[cyan]总体进度: 0/{total_files} 文件[/]", total=total_files)
-            
-            # 创建当前文件进度任务
-            tracker.file_task_id = progress.add_task("[green]当前文件: 等待开始...[/]", total=100)
-            
-            # 创建固定在底部的总体进度任务
-            tracker.total_task_id = progress.add_task(f"[bold cyan]总体压缩进度: 0/{total_files} 文件[/]", total=total_files)
+            # 只创建全局进度任务
+            tracker.task_id = progress.add_task(f"[cyan]压缩进度: 0/{total_files} 文件[/]", total=total_files)
             
             # 设置总文件数
             tracker.total_files = total_files
