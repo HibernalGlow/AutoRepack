@@ -236,6 +236,15 @@ class FastScanner:
         
         # 第一阶段：收集所有目录
         if show_progress:
+            # 显示快速扫描启用状态
+            status_parts = ["[cyan]⚡ 快速扫描模式[/cyan]"]
+            if self.use_rust:
+                status_parts.append("[green]scandir-rs ✓[/green]")
+            if HAS_JOBLIB:
+                status_parts.append("[green]joblib ✓[/green]")
+            status_parts.append(f"[dim]线程数: {self.max_workers}[/dim]")
+            console.print(" | ".join(status_parts))
+            
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[cyan]收集目录..."),
