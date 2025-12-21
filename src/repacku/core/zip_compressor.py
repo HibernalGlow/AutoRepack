@@ -37,7 +37,10 @@ from repacku.core.folder_analyzer import display_folder_structure
 console = Console()
 
 # 并行压缩配置
-DEFAULT_PARALLEL_WORKERS = min(4, (os.cpu_count() or 1))  # 默认并行数
+# 8C16T 推荐: workers=4, threads=4 (总线程16)
+# 计算公式: workers = 逻辑核心数 / 4, 确保 workers * threads <= 逻辑核心数
+DEFAULT_PARALLEL_WORKERS = max(2, min(4, (os.cpu_count() or 4) // 4))
+DEFAULT_COMPRESS_THREADS = max(4, (os.cpu_count() or 8) // DEFAULT_PARALLEL_WORKERS)
 
 # 压缩模式常量
 COMPRESSION_LEVEL = 7
@@ -79,21 +82,21 @@ class CompressionTask:
 
 class ZipCompressor:
     """压缩处理类，封装核心压缩操作，支持并行压缩"""
-    def __init__(self, compression_level: int = None, threads: int = 16, parallel_workers: int = None):
+    def __init__(self, compression_level: int = None, threads: int = None, parallel_workers: int = None):
         """
         初始化压缩处理器
         
         Args:
             compression_level: 压缩级别 (0-9)
-            threads: 单个压缩任务的线程数，默认16
-            parallel_workers: 并行压缩任务数，默认根据CPU核心数自动设置
+            threads: 单个压缩任务的线程数，默认自动计算
+            parallel_workers: 并行压缩任务数，默认自动计算
         """
         if compression_level is None:
             self.compression_level = get_compression_level()
         else:
             self.compression_level = compression_level
-        self.threads = threads
         self.parallel_workers = parallel_workers or DEFAULT_PARALLEL_WORKERS
+        self.threads = threads or DEFAULT_COMPRESS_THREADS
     
     def compress_files(self, source_path: Path, target_zip: Path, file_extensions: List[str] = None, delete_source: bool = False) -> CompressionResult:
         """压缩文件到目标路径，使用通配符匹配特定扩展名的文件
