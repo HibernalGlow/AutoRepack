@@ -444,8 +444,15 @@ class ZipCompressor:
                 compress_mode = folder_info.get("compress_mode", COMPRESS_MODE_SKIP)
                 folder_name = folder_info.get("name", folder_path.name)
                 
+                # 计算相对路径
+                try:
+                    relative_path = folder_path.relative_to(Path(root_path))
+                except ValueError:
+                    relative_path = folder_path
+                
                 # 更新进度描述
-                progress.update(task, description=f"[cyan]压缩: {folder_name[:30]}...")
+                display_path = str(relative_path)[:40]
+                progress.update(task, description=f"[cyan]压缩: {display_path}...")
                 
                 if compress_mode == COMPRESS_MODE_ENTIRE:
                     keep_structure = folder_info.get("keep_folder_structure", True)
@@ -484,16 +491,16 @@ class ZipCompressor:
                 
                 results.append(result)
                 
-                # 显示单个文件夹压缩结果
+                # 显示单个文件夹压缩结果（使用相对路径）
                 if result.success:
                     ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
                     progress.console.print(
-                        f"  [green]✓[/green] {folder_name} | "
+                        f"  [green]✓[/green] {relative_path} | "
                         f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
                         f"([cyan]{ratio:.0f}%[/cyan])"
                     )
                 else:
-                    progress.console.print(f"  [red]✗[/red] {folder_name} | {result.error_message[:50]}")
+                    progress.console.print(f"  [red]✗[/red] {relative_path} | {result.error_message[:50]}")
                 
                 # 更新进度
                 progress.update(task, completed=idx + 1, 
