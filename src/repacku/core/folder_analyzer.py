@@ -16,6 +16,7 @@ from typing import Dict, List, Set, Tuple, Any, Optional, Union
 from dataclasses import dataclass, field, asdict
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 # 导入Rich库
 from rich.console import Console
@@ -31,6 +32,13 @@ from repacku.core.common_utils import (
     DEFAULT_FILE_TYPES, COMPRESS_MODE_ENTIRE, COMPRESS_MODE_SELECTIVE, COMPRESS_MODE_SKIP,
     FileTypeManager, get_file_type, is_file_in_types, is_blacklisted_path, get_folder_size,try_extended_media_match
 )
+
+# 尝试导入快速扫描器
+try:
+    from repacku.core.fast_scanner import FastScanner, FastFolderAnalyzer, fast_get_file_type
+    HAS_FAST_SCANNER = True
+except ImportError:
+    HAS_FAST_SCANNER = False
 
 # 导入配置函数
 from repacku.config.config import get_single_image_compress_rule
@@ -179,8 +187,11 @@ class FolderAnalyzer:
         
         # 特殊规则：检查是否为单个图片且没有子文件夹的情况
         if get_single_image_compress_rule():
-            # 检查是否有子文件夹
-            subfolders = [item for item in folder_path.glob('*') if item.is_dir()]
+            # 检查是否有子文件夹 - 使用 os.scandir 替代 glob，避免特殊字符问题
+            try:
+                subfolders = [Path(entry.path) for entry in os.scandir(folder_path) if entry.is_dir()]
+            except OSError:
+                subfolders = []
             has_subfolders = len(subfolders) > 0
             
             # 检查是否只有一个文件且为图片
@@ -335,8 +346,9 @@ class FolderAnalyzer:
         
         # 只获取当前文件夹中的文件（不包括子文件夹中的文件）
         try:
-            all_files = list(folder_path.glob('*'))
-            regular_files = [f for f in all_files if f.is_file()]
+            # 使用 os.scandir 替代 glob，避免方括号等特殊字符被解释为通配符
+            all_items = [Path(entry.path) for entry in os.scandir(folder_path)]
+            regular_files = [f for f in all_items if f.is_file()]
             
             # 记录总文件数和总大小
             folder_info.total_files = len(regular_files)
@@ -398,13 +410,15 @@ class FolderAnalyzer:
             logging.error(f"分析文件夹时出错: {folder_path}, {str(e)}")
         
         return folder_info    
-    def analyze_folder_structure(self, root_folder: Path, target_file_types: List[str] = None) -> FolderInfo:
+    def analyze_folder_structure(self, root_folder: Path, target_file_types: List[str] = None, 
+                                   use_fast_scanner: bool = True) -> FolderInfo:
         """
         分析文件夹结构，遍历所有子文件夹，构建树状结构
         
         Args:
             root_folder: 根文件夹路径
             target_file_types: 目标文件类型列表，用于判断压缩模式
+            use_fast_scanner: 是否使用快速扫描器 (默认启用)
             
         Returns:
             FolderInfo: 包含树状结构的根文件夹信息
@@ -412,7 +426,97 @@ class FolderAnalyzer:
         if isinstance(root_folder, str):
             root_folder = Path(root_folder)
         
+        # 尝试使用快速扫描器
+        if use_fast_scanner and HAS_FAST_SCANNER:
+            try:
+                return self._analyze_with_fast_scanner(root_folder, target_file_types)
+            except Exception as e:
+                logging.warning(f"快速扫描器失败，回退到标准模式: {e}")
+        
         return self._build_folder_tree(root_folder, "", 1, target_file_types)
+    
+    def _analyze_with_fast_scanner(self, root_folder: Path, 
+                                   target_file_types: List[str] = None) -> FolderInfo:
+        """
+        使用快速扫描器分析文件夹结构
+        
+        Args:
+            root_folder: 根文件夹路径
+            target_file_types: 目标文件类型列表
+            
+        Returns:
+            FolderInfo: 文件夹信息树
+        """
+        scanner = FastScanner()
+        scan_results = scanner.scan_tree_parallel(root_folder, target_file_types)
+        
+        # 将扫描结果转换为 FolderInfo 树
+        return self._convert_scan_to_folder_info(
+            str(root_folder), scan_results, target_file_types
+        )
+    
+    def _convert_scan_to_folder_info(self, path: str, 
+                                     scans: Dict, 
+                                     target_types: List[str] = None,
+                                     parent_path: str = "",
+                                     depth: int = 1) -> FolderInfo:
+        """将扫描结果转换为 FolderInfo"""
+        scan = scans.get(path)
+        if not scan:
+            return None
+        
+        folder_info = FolderInfo(
+            path=scan.path,
+            name=scan.name,
+            parent_path=parent_path,
+            depth=depth,
+            total_files=scan.total_files,
+            total_size=scan.total_size,
+            size_mb=scan.total_size / (1024 * 1024),
+            file_types=scan.file_types,
+            file_extensions=scan.file_extensions,
+            dominant_types=self._get_dominant_types(scan.file_types)
+        )
+        
+        # 确定压缩模式
+        has_archive = scan.file_types.get('archive', 0) > 0
+        has_child_archive = any(
+            scans.get(subdir, type('', (), {'file_types': {}})()).file_types.get('archive', 0) > 0
+            for subdir in scan.subdirs
+        )
+        
+        # 简化的压缩模式判断
+        if not scan.files:
+            folder_info.compress_mode = self.COMPRESS_MODE_SKIP
+        elif has_archive or has_child_archive:
+            if target_types:
+                matching = sum(scan.file_types.get(t, 0) for t in target_types)
+                folder_info.compress_mode = self.COMPRESS_MODE_SELECTIVE if matching >= 2 else self.COMPRESS_MODE_SKIP
+            else:
+                folder_info.compress_mode = self.COMPRESS_MODE_SKIP
+        else:
+            if not target_types:
+                folder_info.compress_mode = self.COMPRESS_MODE_ENTIRE if scan.total_files >= 2 else self.COMPRESS_MODE_SKIP
+            else:
+                matching = sum(scan.file_types.get(t, 0) for t in target_types)
+                if matching >= 2:
+                    folder_info.compress_mode = self.COMPRESS_MODE_ENTIRE if matching == scan.total_files else self.COMPRESS_MODE_SELECTIVE
+                else:
+                    folder_info.compress_mode = self.COMPRESS_MODE_SKIP
+        
+        # 递归处理子目录
+        children = []
+        for subdir in scan.subdirs:
+            child = self._convert_scan_to_folder_info(
+                subdir, scans, target_types, path, depth + 1
+            )
+            if child:
+                children.append(child)
+        
+        children.sort(key=lambda x: (-x.weight, x.name))
+        folder_info.children = children
+        
+        return folder_info
 
     def _build_folder_tree(self, folder_path: Path, parent_path: str = "", depth: int = 1, 
                          target_file_types: List[str] = None) -> FolderInfo:
@@ -446,7 +550,12 @@ class FolderAnalyzer:
         # 递归处理所有子文件夹（多线程并发）
         children = []
         has_child_with_archive = False
-        subfolders = [item for item in folder_path.glob('*') if item.is_dir()]
+        # 使用 os.scandir 替代 glob，避免方括号等特殊字符被解释为通配符
+        try:
+            subfolders = [Path(entry.path) for entry in os.scandir(folder_path) if entry.is_dir()]
+        except OSError as e:
+            logging.error(f"扫描子文件夹时出错: {folder_path}, {str(e)}")
+            subfolders = []
         def process_child(item):
             return self._build_folder_tree(
                 item, 
@@ -467,9 +576,9 @@ class FolderAnalyzer:
         children.sort(key=lambda x: (-x.weight, x.name))
         folder_info.children = children
         
-        # 分析当前文件夹文件（不包括子文件夹）
+        # 分析当前文件夹文件（不包括子文件夹）- 使用 os.scandir 替代 glob
         try:
-            all_items = list(folder_path.glob('*'))
+            all_items = [Path(entry.path) for entry in os.scandir(folder_path)]
             regular_files = [f for f in all_items if f.is_file()]
             # 记录总文件数
             folder_info.total_files = len(regular_files)

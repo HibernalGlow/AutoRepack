@@ -215,6 +215,57 @@ def gallery_pack(
     packer = SinglePacker()
     packer.process_gallery_folders(str(p), delete_after=delete_after)
 
+
+@app.command(help="性能测试：对比快速扫描器与标准扫描器")
+def benchmark(
+    path: Optional[str] = typer.Option(None, "--path", "-p"),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c"),
+    iterations: int = typer.Option(3, "--iterations", "-n", help="测试迭代次数"),
+):
+    """对比扫描性能"""
+    import time
+    from repacku.core.folder_analyzer import FolderAnalyzer
+    
+    p = _ensure_path(path, clipboard)
+    console.print(f"[blue]性能测试路径: {p}[/blue]")
+    console.print(f"[blue]迭代次数: {iterations}[/blue]\n")
+    
+    # 测试标准扫描器
+    console.print("[yellow]测试标准扫描器...[/yellow]")
+    standard_times = []
+    for i in range(iterations):
+        start = time.perf_counter()
+        analyzer = FolderAnalyzer()
+        analyzer.analyze_folder_structure(p, use_fast_scanner=False)
+        elapsed = time.perf_counter() - start
+        standard_times.append(elapsed)
+        console.print(f"  第 {i+1} 次: {elapsed:.3f}s")
+    avg_standard = sum(standard_times) / len(standard_times)
+    
+    # 测试快速扫描器
+    console.print("\n[yellow]测试快速扫描器...[/yellow]")
+    try:
+        from repacku.core.fast_scanner import FastScanner
+        fast_times = []
+        for i in range(iterations):
+            start = time.perf_counter()
+            analyzer = FolderAnalyzer()
+            analyzer.analyze_folder_structure(p, use_fast_scanner=True)
+            elapsed = time.perf_counter() - start
+            fast_times.append(elapsed)
+            console.print(f"  第 {i+1} 次: {elapsed:.3f}s")
+        avg_fast = sum(fast_times) / len(fast_times)
+        
+        # 输出结果
+        console.print("\n[green]===== 结果 =====[/green]")
+        console.print(f"标准扫描器平均: {avg_standard:.3f}s")
+        console.print(f"快速扫描器平均: {avg_fast:.3f}s")
+        speedup = avg_standard / avg_fast if avg_fast > 0 else 0
+        console.print(f"[bold green]加速比: {speedup:.2f}x[/bold green]")
+    except ImportError:
+        console.print("[red]快速扫描器不可用[/red]")
+        console.print(f"\n标准扫描器平均: {avg_standard:.3f}s")
+
 # 外部调用入口
 
 def run():  # pragma: no cover
