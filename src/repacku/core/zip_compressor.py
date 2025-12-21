@@ -2,6 +2,7 @@
 压缩处理器模块 - 简化版
 
 封装核心压缩操作，包括从JSON配置文件读取、两种压缩模式实现
+支持并行压缩以提升性能
 """
 
 import os
@@ -14,6 +15,8 @@ import time
 from pathlib import Path
 from typing import List, Dict, Union, Any, Optional, Tuple
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 
 # 导入Rich库
 from repacku.config.config import get_compression_level
@@ -32,6 +35,9 @@ from repacku.core.folder_analyzer import display_folder_structure
 
 # 设置Rich日志记录器
 console = Console()
+
+# 并行压缩配置
+DEFAULT_PARALLEL_WORKERS = min(4, (os.cpu_count() or 1))  # 默认并行数
 
 # 压缩模式常量
 COMPRESSION_LEVEL = 7
@@ -60,22 +66,34 @@ class CompressionResult:
         self.compressed_size = compressed_size
         self.error_message = error_message
 
+@dataclass
+class CompressionTask:
+    """压缩任务数据类"""
+    folder_path: Path
+    target_zip: Path
+    compress_mode: str
+    file_extensions: List[str] = None
+    keep_folder_structure: bool = True
+    relative_path: str = ""
+
+
 class ZipCompressor:
-    """压缩处理类，封装核心压缩操作"""
-    def __init__(self, compression_level: int = None, threads: int = 16):
+    """压缩处理类，封装核心压缩操作，支持并行压缩"""
+    def __init__(self, compression_level: int = None, threads: int = 16, parallel_workers: int = None):
         """
         初始化压缩处理器
         
         Args:
             compression_level: 压缩级别 (0-9)
-            threads: 压缩线程数，默认16
+            threads: 单个压缩任务的线程数，默认16
+            parallel_workers: 并行压缩任务数，默认根据CPU核心数自动设置
         """
         if compression_level is None:
             self.compression_level = get_compression_level()
         else:
             self.compression_level = compression_level
         self.threads = threads
-        # 不再需要检查文件是否存在，因为我们使用的是系统命令
+        self.parallel_workers = parallel_workers or DEFAULT_PARALLEL_WORKERS
     
     def compress_files(self, source_path: Path, target_zip: Path, file_extensions: List[str] = None, delete_source: bool = False) -> CompressionResult:
         """压缩文件到目标路径，使用通配符匹配特定扩展名的文件
@@ -305,13 +323,14 @@ class ZipCompressor:
             except Exception as e:
                 logging.info(f"[#file_ops]⚠️ 删除空文件夹失败: {e}")
     
-    def compress_from_json(self, config_path: Path, delete_after_success: bool = False) -> List[CompressionResult]:
+    def compress_from_json(self, config_path: Path, delete_after_success: bool = False, parallel: bool = True) -> List[CompressionResult]:
         """
-        根据JSON配置文件进行压缩
+        根据JSON配置文件进行压缩，支持并行处理
         
         Args:
             config_path: 配置文件路径
             delete_after_success: 是否删除源文件
+            parallel: 是否启用并行压缩（默认启用）
             
         Returns:
             List[CompressionResult]: 压缩结果列表
@@ -423,9 +442,104 @@ class ZipCompressor:
             console.print("[yellow]没有需要压缩的文件夹[/yellow]")
             return []
         
-        results = []
+        # 构建压缩任务列表
+        tasks = self._build_compression_tasks(folders_to_compress, root_path, target_file_types)
         
-        # 创建全局进度条
+        # 根据并行设置选择执行方式
+        if parallel and total_folders > 1:
+            console.print(f"[cyan]⚡ 并行压缩模式: {self.parallel_workers} 个工作线程[/cyan]")
+            results = self._compress_parallel(tasks, root_path, delete_after_success)
+        else:
+            results = self._compress_sequential(tasks, root_path, delete_after_success)
+        
+        # 显示结果摘要
+        success_count = sum(1 for r in results if r.success)
+        fail_count = len(results) - success_count
+        total_original = sum(r.original_size for r in results if r.success)
+        total_compressed = sum(r.compressed_size for r in results if r.success)
+        total_ratio = (1 - total_compressed / total_original) * 100 if total_original > 0 else 0
+        
+        console.print(f"\n[green]✓ 完成[/green] {success_count}/{len(results)} | "
+                     f"总计 {total_original/1024/1024:.1f}MB → {total_compressed/1024/1024:.1f}MB "
+                     f"([cyan]{total_ratio:.0f}%[/cyan])")
+        
+        return results
+    
+    def _build_compression_tasks(self, folders_to_compress: List[Dict], root_path: str, target_file_types: List[str]) -> List[CompressionTask]:
+        """构建压缩任务列表"""
+        tasks = []
+        for folder_info in folders_to_compress:
+            folder_path = Path(folder_info.get("path", ""))
+            compress_mode = folder_info.get("compress_mode", COMPRESS_MODE_SKIP)
+            
+            # 计算相对路径
+            try:
+                relative_path = str(folder_path.relative_to(Path(root_path)))
+            except ValueError:
+                relative_path = str(folder_path)
+            
+            if compress_mode == COMPRESS_MODE_ENTIRE:
+                task = CompressionTask(
+                    folder_path=folder_path,
+                    target_zip=folder_path.with_suffix(".zip"),
+                    compress_mode=compress_mode,
+                    keep_folder_structure=folder_info.get("keep_folder_structure", True),
+                    relative_path=relative_path
+                )
+            elif compress_mode == COMPRESS_MODE_SELECTIVE:
+                file_extensions = folder_info.get("file_extensions", {})
+                if file_extensions:
+                    extensions_list = list(file_extensions.keys())
+                else:
+                    file_types = folder_info.get("file_types", {})
+                    target_types = list(file_types.keys()) or target_file_types
+                    extensions_list = []
+                    for file_type in target_types:
+                        if file_type == "image":
+                            extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'])
+                        elif file_type == "video":
+                            extensions_list.extend(['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv'])
+                        elif file_type == "document":
+                            extensions_list.extend(['.pdf', '.doc', '.docx', '.txt', '.md'])
+                
+                task = CompressionTask(
+                    folder_path=folder_path,
+                    target_zip=folder_path / f"{folder_path.name}.zip",
+                    compress_mode=compress_mode,
+                    file_extensions=extensions_list,
+                    relative_path=relative_path
+                )
+            else:
+                continue
+            
+            tasks.append(task)
+        
+        return tasks
+    
+    def _execute_single_task(self, task: CompressionTask, delete_source: bool) -> Tuple[CompressionTask, CompressionResult]:
+        """执行单个压缩任务（用于并行处理）"""
+        if task.compress_mode == COMPRESS_MODE_ENTIRE:
+            result = self.compress_entire_folder(
+                task.folder_path,
+                task.target_zip,
+                delete_source,
+                task.keep_folder_structure
+            )
+        else:  # COMPRESS_MODE_SELECTIVE
+            result = self.compress_files(
+                task.folder_path,
+                task.target_zip,
+                task.file_extensions,
+                delete_source
+            )
+        return (task, result)
+    
+    def _compress_parallel(self, tasks: List[CompressionTask], root_path: str, delete_source: bool) -> List[CompressionResult]:
+        """并行执行压缩任务"""
+        results = []
+        total_tasks = len(tasks)
+        completed = 0
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
@@ -437,74 +551,83 @@ class ZipCompressor:
             TimeRemainingColumn(),
             console=console
         ) as progress:
-            task = progress.add_task(f"[cyan]压缩进度: 0/{total_folders}", total=total_folders)
+            main_task = progress.add_task(f"[cyan]并行压缩: 0/{total_tasks}", total=total_tasks)
             
-            for idx, folder_info in enumerate(folders_to_compress):
-                folder_path = Path(folder_info.get("path", ""))
-                compress_mode = folder_info.get("compress_mode", COMPRESS_MODE_SKIP)
-                folder_name = folder_info.get("name", folder_path.name)
+            with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
+                # 提交所有任务
+                futures = {
+                    executor.submit(self._execute_single_task, task, delete_source): task
+                    for task in tasks
+                }
                 
-                # 计算相对路径
-                try:
-                    relative_path = folder_path.relative_to(Path(root_path))
-                except ValueError:
-                    relative_path = folder_path
+                # 收集结果
+                for future in as_completed(futures):
+                    try:
+                        task, result = future.result()
+                        results.append(result)
+                        completed += 1
+                        
+                        # 显示单个任务结果
+                        display_path = task.relative_path[:40]
+                        if result.success:
+                            ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
+                            progress.console.print(
+                                f"  [green]✓[/green] {display_path} | "
+                                f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
+                                f"([cyan]{ratio:.0f}%[/cyan])"
+                            )
+                        else:
+                            err_msg = result.error_message[:50] if result.error_message else "未知错误"
+                            progress.console.print(f"  [red]✗[/red] {display_path} | {err_msg}")
+                        
+                        progress.update(main_task, completed=completed,
+                                       description=f"[cyan]并行压缩: {completed}/{total_tasks}")
+                    except Exception as e:
+                        completed += 1
+                        results.append(CompressionResult(False, error_message=str(e)))
+                        progress.update(main_task, completed=completed)
+        
+        return results
+    
+    def _compress_sequential(self, tasks: List[CompressionTask], root_path: str, delete_source: bool) -> List[CompressionResult]:
+        """串行执行压缩任务（原有逻辑）"""
+        results = []
+        total_tasks = len(tasks)
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=40),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            main_task = progress.add_task(f"[cyan]压缩进度: 0/{total_tasks}", total=total_tasks)
+            
+            for idx, task in enumerate(tasks):
+                display_path = task.relative_path[:40]
+                progress.update(main_task, description=f"[cyan]压缩: {display_path}...")
                 
-                # 更新进度描述
-                display_path = str(relative_path)[:40]
-                progress.update(task, description=f"[cyan]压缩: {display_path}...")
-                
-                if compress_mode == COMPRESS_MODE_ENTIRE:
-                    keep_structure = folder_info.get("keep_folder_structure", True)
-                    result = self.compress_entire_folder(
-                        folder_path, 
-                        folder_path.with_suffix(".zip"), 
-                        delete_after_success,
-                        keep_structure
-                    )
-                elif compress_mode == COMPRESS_MODE_SELECTIVE:
-                    file_extensions = folder_info.get("file_extensions", {})
-                    
-                    if file_extensions:
-                        extensions_list = list(file_extensions.keys())
-                    else:
-                        file_types = folder_info.get("file_types", {})
-                        target_types = list(file_types.keys()) or target_file_types
-                        extensions_list = []
-                        for file_type in target_types:
-                            if file_type == "image":
-                                extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'])
-                            elif file_type == "video":
-                                extensions_list.extend(['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv'])
-                            elif file_type == "document":
-                                extensions_list.extend(['.pdf', '.doc', '.docx', '.txt', '.md'])
-                    
-                    archive_path = folder_path / f"{folder_path.name}.zip"
-                    result = self.compress_files(
-                        folder_path, 
-                        archive_path,
-                        extensions_list,
-                        delete_after_success
-                    )
-                else:
-                    continue
-                
+                _, result = self._execute_single_task(task, delete_source)
                 results.append(result)
                 
-                # 显示单个文件夹压缩结果（使用相对路径）
+                # 显示单个任务结果
                 if result.success:
                     ratio = (1 - result.compressed_size / result.original_size) * 100 if result.original_size > 0 else 0
                     progress.console.print(
-                        f"  [green]✓[/green] {relative_path} | "
+                        f"  [green]✓[/green] {display_path} | "
                         f"{result.original_size/1024/1024:.1f}MB → {result.compressed_size/1024/1024:.1f}MB "
                         f"([cyan]{ratio:.0f}%[/cyan])"
                     )
                 else:
-                    progress.console.print(f"  [red]✗[/red] {relative_path} | {result.error_message[:50]}")
+                    err_msg = result.error_message[:50] if result.error_message else "未知错误"
+                    progress.console.print(f"  [red]✗[/red] {display_path} | {err_msg}")
                 
-                # 更新进度
-                progress.update(task, completed=idx + 1, 
-                              description=f"[cyan]压缩进度: {idx + 1}/{total_folders}")
+                progress.update(main_task, completed=idx + 1,
+                               description=f"[cyan]压缩进度: {idx + 1}/{total_tasks}")
         
         # 显示结果摘要
         success_count = sum(1 for r in results if r.success)

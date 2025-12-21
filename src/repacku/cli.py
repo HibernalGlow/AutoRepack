@@ -124,6 +124,8 @@ def main(
     clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板获取路径"),
     yes: bool = typer.Option(False, "--yes", "-y", help="自动确认后续操作"),
     delete_after: bool = typer.Option(False, "--delete-after", "-d", help="压缩成功后删除源"),
+    parallel: bool = typer.Option(True, "--parallel/--no-parallel", help="启用/禁用并行压缩"),
+    workers: int = typer.Option(None, "--workers", "-w", help="并行工作线程数"),
 ) -> None:
     """默认流程: 分析 -> (询问/或自动) 压缩"""
     if ctx.invoked_subcommand is not None:
@@ -149,8 +151,8 @@ def main(
         if not confirm:
             console.print("[yellow]已取消压缩步骤。[/yellow]")
             raise typer.Exit(0)
-    comp = ZipCompressor()
-    results = comp.compress_from_json(cfg, delete_after_success=delete_after)
+    comp = ZipCompressor(parallel_workers=workers) if workers else ZipCompressor()
+    results = comp.compress_from_json(cfg, delete_after_success=delete_after, parallel=parallel)
     succ = sum(1 for r in results if r.success)
     fail = len(results) - succ
     console.print(f"[green]成功: {succ}  失败: {fail}[/green]")
@@ -175,6 +177,8 @@ def compress(
     delete_after: bool = typer.Option(False, "--delete-after", "-d"),
     single: bool = typer.Option(False, "--single", help="以单层打包模式执行"),
     gallery: bool = typer.Option(False, "--gallery", help="以画集模式执行"),
+    parallel: bool = typer.Option(True, "--parallel/--no-parallel", help="启用/禁用并行压缩"),
+    workers: int = typer.Option(None, "--workers", "-w", help="并行工作线程数"),
 ):
     p = _ensure_path(path, clipboard)
 
@@ -192,8 +196,8 @@ def compress(
     # 常规 analyze+compress 流程
     type_list = [s.strip() for s in types.split(',')] if types else None
     cfg = _analyze(p, type_list, display=True)
-    comp = ZipCompressor()
-    comp.compress_from_json(cfg, delete_after_success=delete_after)
+    comp = ZipCompressor(parallel_workers=workers) if workers else ZipCompressor()
+    comp.compress_from_json(cfg, delete_after_success=delete_after, parallel=parallel)
 
 @app.command(help="单层打包模式 (不基于分析配置)")
 def single_pack(
