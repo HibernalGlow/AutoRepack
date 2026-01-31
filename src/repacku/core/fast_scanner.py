@@ -197,7 +197,22 @@ class FastScanner:
                     ftype = fast_get_file_type(ext)
                     if ftype:
                         file_types[ftype] += 1
-                    if ext:
+                    
+                    # 只有当没有指定目标类型，或者扩展名属于目标类型之一时，才记录扩展名
+                    should_record_ext = False
+                    if not target_types:
+                        should_record_ext = True
+                    else:
+                        if ftype in target_types:
+                            should_record_ext = True
+                        else:
+                            # 即使ftype没找到，如果扩展名在这些类型的集合中也应该记录
+                            for t in target_types:
+                                if t in DEFAULT_FILE_TYPES and ext in DEFAULT_FILE_TYPES[t]:
+                                    should_record_ext = True
+                                    break
+                    
+                    if should_record_ext and ext:
                         file_exts[ext] += 1
                         
                 elif entry.is_dir(follow_symlinks=False):

@@ -15,7 +15,7 @@ import time
 import signal
 import threading
 from pathlib import Path
-from typing import List, Dict, Union, Any, Optional, Tuple
+from typing import List, Dict, Union, Any, Optional, Tuple, Callable
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -331,7 +331,7 @@ class ZipCompressor:
             except Exception as e:
                 logging.info(f"[#file_ops]⚠️ 删除空文件夹失败: {e}")
     
-    def compress_from_json(self, config_path: Path, delete_after_success: bool = False, parallel: bool = True) -> List[CompressionResult]:
+    def compress_from_json(self, config_path: Path, delete_after_success: bool = False, parallel: bool = True, on_progress: Optional[Callable[[int, str], None]] = None) -> List[CompressionResult]:
         """
         根据JSON配置文件进行压缩，支持并行处理
         
@@ -339,6 +339,7 @@ class ZipCompressor:
             config_path: 配置文件路径
             delete_after_success: 是否删除源文件
             parallel: 是否启用并行压缩（默认启用）
+            on_progress: 进度回调函数 (percent: int, message: str) -> None
             
         Returns:
             List[CompressionResult]: 压缩结果列表
@@ -456,9 +457,9 @@ class ZipCompressor:
         # 根据并行设置选择执行方式
         if parallel and total_folders > 1:
             console.print(f"[cyan]⚡ 并行压缩模式: {self.parallel_workers} 个工作线程[/cyan]")
-            results = self._compress_parallel(tasks, root_path, delete_after_success)
+            results = self._compress_parallel(tasks, root_path, delete_after_success, on_progress)
         else:
-            results = self._compress_sequential(tasks, root_path, delete_after_success)
+            results = self._compress_sequential(tasks, root_path, delete_after_success, on_progress)
         
         # 显示结果摘要
         success_count = sum(1 for r in results if r.success)
@@ -500,11 +501,20 @@ class ZipCompressor:
                     extensions_list = list(file_extensions.keys())
                 else:
                     file_types = folder_info.get("file_types", {})
-                    target_types = list(file_types.keys()) or target_file_types
+                    # 如果提供了 target_file_types，仅使用 target_file_types 中定义的类型
+                    # 否则使用文件夹中识别出的所有类型
+                    target_types = target_file_types if target_file_types else list(file_types.keys())
                     extensions_list = []
+                    
+                    # 从 common_utils 获取类型定义
+                    from repacku.core.common_utils import DEFAULT_FILE_TYPES
+                    
                     for file_type in target_types:
-                        if file_type == "image":
-                            extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'])
+                        if file_type in DEFAULT_FILE_TYPES:
+                            extensions_list.extend(list(DEFAULT_FILE_TYPES[file_type]))
+                        # Fallback for hardcoded types if not in config
+                        elif file_type == "image":
+                            extensions_list.extend(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.avif'])
                         elif file_type == "video":
                             extensions_list.extend(['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.flv'])
                         elif file_type == "document":
@@ -546,7 +556,7 @@ class ZipCompressor:
             )
         return (task, result)
     
-    def _compress_parallel(self, tasks: List[CompressionTask], root_path: str, delete_source: bool) -> List[CompressionResult]:
+    def _compress_parallel(self, tasks: List[CompressionTask], root_path: str, delete_source: bool, on_progress: Optional[Callable[[int, str], None]] = None) -> List[CompressionResult]:
         """并行执行压缩任务，支持 Ctrl+C 中断"""
         results = []
         total_tasks = len(tasks)
@@ -615,6 +625,11 @@ class ZipCompressor:
                             
                             progress.update(main_task, completed=completed,
                                            description=f"[cyan]并行压缩: {completed}/{total_tasks}")
+                            
+                            # 调用进度回调
+                            if on_progress:
+                                percent = int((completed / total_tasks) * 100)
+                                on_progress(percent, f"压缩中: {completed}/{total_tasks}")
                         except TimeoutError:
                             continue
                         except Exception as e:
@@ -627,7 +642,7 @@ class ZipCompressor:
         
         return results
     
-    def _compress_sequential(self, tasks: List[CompressionTask], root_path: str, delete_source: bool) -> List[CompressionResult]:
+    def _compress_sequential(self, tasks: List[CompressionTask], root_path: str, delete_source: bool, on_progress: Optional[Callable[[int, str], None]] = None) -> List[CompressionResult]:
         """串行执行压缩任务（原有逻辑）"""
         results = []
         total_tasks = len(tasks)
@@ -663,6 +678,11 @@ class ZipCompressor:
                 else:
                     err_msg = result.error_message[:50] if result.error_message else "未知错误"
                     progress.console.print(f"  [red]✗[/red] {display_path} | {err_msg}")
+                
+                # 调用进度回调
+                if on_progress:
+                    percent = int(((idx + 1) / total_tasks) * 100)
+                    on_progress(percent, f"压缩中: {idx + 1}/{total_tasks}")
                 
                 progress.update(main_task, completed=idx + 1,
                                description=f"[cyan]压缩进度: {idx + 1}/{total_tasks}")
